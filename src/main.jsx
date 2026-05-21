@@ -105,7 +105,7 @@ function App() {
   const saleProfit = selectedProduct ? (selectedProduct.price - selectedProduct.cost) * saleQty : 0;
 
   useEffect(() => {
-    if (!isStandalone) return;
+    if (!isStandalone || !showSplash) return;
     const timer = window.setTimeout(() => setShowSplash(false), 1300);
     return () => window.clearTimeout(timer);
   }, [isStandalone, showSplash]);
