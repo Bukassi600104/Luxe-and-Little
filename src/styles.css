@@ -183,7 +183,7 @@ button:disabled {
   overflow: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  padding: 0 2px 98px;
+  padding: 0 2px 118px;
   scrollbar-width: none;
 }
 
@@ -371,22 +371,121 @@ button:disabled {
   font-size: 20px;
 }
 
+.stock-glance {
+  display: grid;
+  gap: 13px;
+  padding: 15px;
+  border-radius: 22px;
+}
+
+.stock-glance-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--pink);
+}
+
+.stock-glance-head div {
+  display: grid;
+  gap: 4px;
+}
+
+.stock-glance-head span,
+.stock-bar-row span,
+.stock-glance-mini span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.stock-glance-head strong {
+  color: var(--ink);
+  font-size: 20px;
+}
+
+.stock-bars {
+  display: grid;
+  gap: 10px;
+}
+
+.stock-bar-row {
+  display: grid;
+  grid-template-columns: 78px 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.stock-bar-row strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.stock-bar-track {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.stock-bar-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.stock-bar-track .cost {
+  background: linear-gradient(90deg, #f0c53f, #d8fb31);
+}
+
+.stock-bar-track .selling {
+  background: linear-gradient(90deg, #ff2f98, #ff82c4);
+}
+
+.stock-bar-track .profit {
+  background: linear-gradient(90deg, #9136dd, #c999ff);
+}
+
+.stock-glance-mini {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.stock-glance-mini div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.stock-glance-mini strong {
+  overflow: hidden;
+  color: var(--pink);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .tabbar {
   position: absolute;
   left: 16px;
   right: 16px;
-  bottom: max(14px, env(safe-area-inset-bottom));
-  height: 70px;
+  bottom: max(24px, calc(env(safe-area-inset-bottom) + 14px));
+  height: 76px;
   border-radius: 28px;
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  padding: 8px;
+  padding: 9px 8px;
 }
 
 .tabbar button {
+  min-width: 0;
   display: grid;
   place-items: center;
-  gap: 3px;
+  align-content: center;
+  gap: 4px;
   color: #8b778d;
   background: transparent;
   border-radius: 20px;
@@ -400,6 +499,34 @@ button:disabled {
 .tabbar .active {
   color: var(--pink);
   background: rgba(255, 255, 255, 0.66);
+}
+
+.tabbar button:nth-child(3) {
+  position: relative;
+  min-height: 72px;
+  margin-top: -20px;
+  border-radius: 24px;
+  color: white;
+  background: linear-gradient(145deg, #ff2f98, #ff69b8 48%, #9136dd);
+  box-shadow:
+    0 18px 34px rgba(255, 47, 152, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.62),
+    inset 0 -14px 24px rgba(76, 24, 110, 0.18);
+}
+
+.tabbar button:nth-child(3) svg {
+  width: 24px;
+  height: 24px;
+}
+
+.tabbar button:nth-child(3) span {
+  color: white;
+  font-size: 11px;
+}
+
+.tabbar button:nth-child(3).active {
+  color: white;
+  background: linear-gradient(145deg, #ff2f98, #ff69b8 48%, #9136dd);
 }
 
 .section-title {

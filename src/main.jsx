@@ -73,7 +73,7 @@ const defaultSettings = {
   lowStockThreshold: 10
 };
 
-const appVersion = '1.0.7';
+const appVersion = '1.0.8';
 
 function toMoneyNumber(value) {
   return Number(value || 0);
@@ -460,7 +460,7 @@ function App() {
         )}
         {saleNotice && <ToastNotice notice={saleNotice} onClose={() => setSaleNotice(null)} />}
         <section className="screen-content">
-          {activeTab === 'dashboard' && <Dashboard totals={totals} />}
+          {activeTab === 'dashboard' && <Dashboard totals={totals} stockValue={profitView.current} />}
           {activeTab === 'inventory' && (
             <Inventory
               products={products}
@@ -858,7 +858,7 @@ function Header({ activeTab, lowStockCount, onMenu, onBack, onBell, onSettings }
   );
 }
 
-function Dashboard({ totals }) {
+function Dashboard({ totals, stockValue }) {
   return (
     <div className="stack">
       <div className="date-pill"><CalendarDays size={16} /> {today}</div>
@@ -875,12 +875,50 @@ function Dashboard({ totals }) {
           <span>Review items before weekend sales</span>
         </div>
       </div>
+      <StockValueGlance stockValue={stockValue} />
       <div className="mini-grid">
         <Mini title="Pending Orders" value={totals.pendingOrders} sub="To be delivered" />
         <Mini title="Remaining Stock" value={totals.stock} sub="Across products" />
         <Mini title="Best Seller" value={totals.bestName} sub="From saved sales" />
       </div>
     </div>
+  );
+}
+
+function StockValueGlance({ stockValue }) {
+  const maxValue = Math.max(stockValue.totalSelling, stockValue.totalCost, Math.abs(stockValue.expectedProfit), 1);
+  const bars = [
+    ['Cost Value', stockValue.totalCost, 'cost'],
+    ['Selling Value', stockValue.totalSelling, 'selling'],
+    ['Expected Profit', stockValue.expectedProfit, 'profit']
+  ];
+
+  return (
+    <section className="stock-glance glass">
+      <div className="stock-glance-head">
+        <div>
+          <span>Stock Value at a Glance</span>
+          <strong>{money.format(stockValue.expectedProfit)}</strong>
+        </div>
+        <BarChart3 size={20} />
+      </div>
+      <div className="stock-bars">
+        {bars.map(([label, value, tone]) => (
+          <div className="stock-bar-row" key={label}>
+            <span>{label}</span>
+            <div className="stock-bar-track">
+              <i className={tone} style={{ width: `${Math.max(6, Math.min(100, (Math.abs(value) / maxValue) * 100))}%` }} />
+            </div>
+            <strong>{money.format(value)}</strong>
+          </div>
+        ))}
+      </div>
+      <div className="stock-glance-mini">
+        <div><span>Cost</span><strong>{money.format(stockValue.totalCost)}</strong></div>
+        <div><span>Selling</span><strong>{money.format(stockValue.totalSelling)}</strong></div>
+        <div><span>Profit</span><strong>{money.format(stockValue.expectedProfit)}</strong></div>
+      </div>
+    </section>
   );
 }
 
