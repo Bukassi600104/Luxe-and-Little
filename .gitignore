@@ -1,0 +1,14 @@
+node_modules/
+dist/
+*.log
+vite*.log
+vite*.err.log
+.env
+.env.local
+.DS_Store
+
+# Local design/source artifacts not required by the deployed app
+*.pdf
+Mock-up style.jpeg
+logo-preview.png
+app-icon-*.png
