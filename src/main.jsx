@@ -29,10 +29,12 @@ import {
 import {
   db,
   clearBusinessData,
+  deleteSale,
   exportBusinessData,
   getBusinessSettings,
   getSecuritySettings,
   importBusinessData,
+  markReceiptShared,
   recordSale,
   removeCustomer,
   removeExpense,
@@ -42,6 +44,8 @@ import {
   saveExpense,
   saveProduct,
   saveSecuritySettings,
+  updateSaleDetails,
+  updateSaleStatus,
   verifyPin
 } from './db';
 import './styles.css';
@@ -72,7 +76,7 @@ const defaultSettings = {
   lowStockThreshold: 10
 };
 
-const appVersion = '1.0.9';
+const appVersion = '1.1.0';
 
 function formatReceiptDate(value) {
   return new Intl.DateTimeFormat('en-GB', {
@@ -90,6 +94,28 @@ function toMoneyNumber(value) {
   return Number(value || 0);
 }
 
+function orderStatus(sale) {
+  return sale.status || 'sold';
+}
+
+function orderItems(sale) {
+  if (Array.isArray(sale.items) && sale.items.length) return sale.items;
+  return [{
+    productId: sale.productId,
+    productName: sale.productName,
+    productSize: sale.productSize,
+    quantity: Number(sale.quantity || 1),
+    unitPrice: Number(sale.unitPrice || sale.total || 0),
+    costPrice: Math.max(0, Number(sale.total || 0) - Number(sale.profit || 0))
+  }];
+}
+
+function isToday(value) {
+  const date = value ? new Date(value) : new Date();
+  const now = new Date();
+  return date.toDateString() === now.toDateString();
+}
+
 function productValuation(product) {
   const quantity = toMoneyNumber(product.qty);
   const cost = toMoneyNumber(product.cost);
@@ -104,6 +130,7 @@ function productValuation(product) {
 }
 
 function buildProfitView(products, sales) {
+  const soldSales = sales.filter((sale) => orderStatus(sale) === 'sold');
   const productRows = products.map((product) => ({ product, ...productValuation(product) }));
   const current = productRows.reduce(
     (acc, row) => ({
@@ -115,7 +142,7 @@ function buildProfitView(products, sales) {
   );
   current.margin = current.totalSelling > 0 ? current.expectedProfit / current.totalSelling : 0;
 
-  const sold = sales.reduce(
+  const sold = soldSales.reduce(
     (acc, sale) => {
       const revenue = toMoneyNumber(sale.total);
       const profit = toMoneyNumber(sale.profit);
@@ -147,8 +174,7 @@ function App() {
   const [sales, setSales] = useState([]);
   const [lastSale, setLastSale] = useState(null);
   const [settings, setSettings] = useState(null);
-  const [saleQty, setSaleQty] = useState(1);
-  const [saleSize, setSaleSize] = useState('');
+  const [orderLines, setOrderLines] = useState([]);
   const [selectedProductId, setSelectedProductId] = useState('');
   const [selectedCustomerPhone, setSelectedCustomerPhone] = useState('');
   const [productDraft, setProductDraft] = useState(null);
@@ -163,8 +189,14 @@ function App() {
 
   const selectedProduct = products.find((item) => item.id === Number(selectedProductId)) || products[0] || null;
   const selectedCustomer = customers.find((item) => item.phone === selectedCustomerPhone) || customers[0] || null;
-  const saleTotal = selectedProduct ? selectedProduct.price * saleQty : 0;
-  const saleProfit = selectedProduct ? (selectedProduct.price - selectedProduct.cost) * saleQty : 0;
+  const saleTotal = orderLines.reduce((sum, line) => {
+    const product = products.find((item) => item.id === Number(line.productId));
+    return sum + Number(product?.price || 0) * Number(line.quantity || 0);
+  }, 0);
+  const saleProfit = orderLines.reduce((sum, line) => {
+    const product = products.find((item) => item.id === Number(line.productId));
+    return sum + (Number(product?.price || 0) - Number(product?.cost || 0)) * Number(line.quantity || 0);
+  }, 0);
   const lowStockThreshold = Number(settings?.lowStockThreshold || defaultSettings.lowStockThreshold);
   const lowStockItems = useMemo(
     () => products.filter((item) => Number(item.qty || 0) <= lowStockThreshold),
@@ -173,8 +205,10 @@ function App() {
   const profitView = useMemo(() => buildProfitView(products, sales), [products, sales]);
 
   useEffect(() => {
-    setSaleSize(selectedProduct?.size || '');
-  }, [selectedProduct?.id, selectedProduct?.size]);
+    if (!products.length || orderLines.length) return;
+    const product = products[0];
+    setOrderLines([{ id: Date.now(), productId: product.id, productSize: product.size || '', quantity: 1 }]);
+  }, [products, orderLines.length]);
 
   useEffect(() => {
     if (!isStandalone || !showSplash) return;
@@ -216,13 +250,17 @@ function App() {
   }, [isStandalone, isUnlocked, security]);
 
   const totals = useMemo(() => {
+    const soldSales = sales.filter((sale) => orderStatus(sale) === 'sold');
+    const pendingSales = sales.filter((sale) => orderStatus(sale) === 'pending');
     const expenseTotal = expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
     const stock = products.reduce((sum, item) => sum + Number(item.qty || 0), 0);
-    const salesTotal = sales.reduce((sum, item) => sum + Number(item.total || 0), 0);
-    const profitTotal = sales.reduce((sum, item) => sum + Number(item.profit || 0), 0);
-    const bestProduct = sales.length
-      ? sales.reduce((acc, sale) => {
-          acc[sale.productName] = (acc[sale.productName] || 0) + Number(sale.quantity || 0);
+    const salesTotal = soldSales.reduce((sum, item) => sum + Number(item.total || 0), 0);
+    const profitTotal = soldSales.reduce((sum, item) => sum + Number(item.profit || 0), 0);
+    const bestProduct = soldSales.length
+      ? soldSales.reduce((acc, sale) => {
+          orderItems(sale).forEach((item) => {
+            acc[item.productName] = (acc[item.productName] || 0) + Number(item.quantity || 0);
+          });
           return acc;
         }, {})
       : {};
@@ -237,7 +275,7 @@ function App() {
       stock,
       low: products.filter((item) => Number(item.qty) <= Number(settings?.lowStockThreshold || 10)).length,
       bestName,
-      pendingOrders: sales.length
+      pendingOrders: pendingSales.length
     };
   }, [expenses, products, sales, settings]);
 
@@ -406,28 +444,74 @@ function App() {
   }
 
   async function saveSale() {
-    if (!selectedProduct || !selectedCustomer) return;
-    const { updatedProduct, sale } = await recordSale({
-      product: selectedProduct,
-      quantity: saleQty,
+    if (!selectedCustomer || !orderLines.length) return;
+    const items = orderLines
+      .map((line) => {
+        const product = products.find((item) => item.id === Number(line.productId));
+        if (!product) return null;
+        return {
+          productId: product.id,
+          productName: product.name,
+          productSize: line.productSize || product.size,
+          quantity: Number(line.quantity || 1),
+          unitPrice: Number(product.price || 0),
+          costPrice: Number(product.cost || 0)
+        };
+      })
+      .filter(Boolean);
+    if (!items.length) return;
+    const { updatedProducts, sale } = await recordSale({
+      items,
       customerName: selectedCustomer.name,
       phone: selectedCustomer.phone,
-      productSize: saleSize,
       lowStockThreshold: settings.lowStockThreshold
     });
-    setProducts((items) => items.map((item) => (item.id === updatedProduct.id ? updatedProduct : item)));
+    setProducts((current) => current.map((item) => updatedProducts.find((product) => product.id === item.id) || item));
     setSales((items) => [sale, ...items]);
     setLastSale(sale);
-    setSaleQty(1);
+    setOrderLines(products[0] ? [{ id: Date.now(), productId: products[0].id, productSize: products[0].size || '', quantity: 1 }] : []);
     setActiveTab('receipt');
-    if (Number(updatedProduct.qty || 0) <= lowStockThreshold) {
+    const lowProduct = updatedProducts.find((product) => Number(product.qty || 0) <= lowStockThreshold);
+    if (lowProduct) {
       setStockNoticeDismissed(false);
       setSaleNotice({
-        title: 'Stock is now low',
-        text: `${updatedProduct.name} has ${updatedProduct.qty} left.`
+        title: 'Stock reserved',
+        text: `${lowProduct.name} has ${lowProduct.qty} left.`
       });
     }
     await reloadBusinessData();
+  }
+
+  async function changeOrderStatus(sale, status) {
+    const { sale: updatedSale } = await updateSaleStatus(sale.id, status, settings.lowStockThreshold);
+    await reloadBusinessData();
+    setLastSale((current) => (current?.id === updatedSale.id ? updatedSale : current));
+  }
+
+  async function removeOrder(sale) {
+    const confirmed = window.confirm('Delete this order and restore its reserved stock if needed?');
+    if (!confirmed) return;
+    await deleteSale(sale.id, settings.lowStockThreshold);
+    await reloadBusinessData();
+    setLastSale((current) => (current?.id === sale.id ? null : current));
+  }
+
+  async function editOrder(sale) {
+    const customerName = window.prompt('Customer name', sale.customerName || '');
+    if (customerName === null) return;
+    const phone = window.prompt('Phone number', sale.phone || '');
+    if (phone === null) return;
+    const updatedSale = await updateSaleDetails(sale.id, { customerName, phone });
+    if (!updatedSale) return;
+    setSales((items) => items.map((item) => (item.id === updatedSale.id ? updatedSale : item)));
+    setLastSale((current) => (current?.id === updatedSale.id ? updatedSale : current));
+  }
+
+  async function handleReceiptShared(sale) {
+    const updatedSale = await markReceiptShared(sale.id);
+    if (!updatedSale) return;
+    setSales((items) => items.map((item) => (item.id === updatedSale.id ? updatedSale : item)));
+    setLastSale(updatedSale);
   }
 
   async function completeSetup(nextSettings, pin) {
@@ -491,16 +575,11 @@ function App() {
             <SalesForm
               customers={customers}
               products={products}
-              saleQty={saleQty}
-              setSaleQty={setSaleQty}
-              selectedProductId={selectedProductId}
-              setSelectedProductId={setSelectedProductId}
+              orderLines={orderLines}
+              setOrderLines={setOrderLines}
               selectedCustomerPhone={selectedCustomerPhone}
               setSelectedCustomerPhone={setSelectedCustomerPhone}
-              product={selectedProduct}
               customer={selectedCustomer}
-              saleSize={saleSize}
-              setSaleSize={setSaleSize}
               saleTotal={saleTotal}
               saleProfit={saleProfit}
               onSave={saveSale}
@@ -532,13 +611,16 @@ function App() {
               hasPin={Boolean(security?.pinHash)}
               appVersion={appVersion}
               sales={sales}
+              onChangeOrderStatus={changeOrderStatus}
+              onDeleteOrder={removeOrder}
+              onEditOrder={editOrder}
               onViewSale={(sale) => {
                 setLastSale(sale);
                 setActiveTab('receipt');
               }}
             />
           )}
-          {activeTab === 'receipt' && <Receipt sale={lastSale} />}
+          {activeTab === 'receipt' && <Receipt sale={lastSale} onReceiptShared={handleReceiptShared} />}
         </section>
         <TabBar activeTab={activeTab} setActiveTab={setActiveTab} />
         {productDraft && (
@@ -1025,19 +1107,42 @@ function Inventory({ products, onAdd, onEdit, onDelete }) {
 function SalesForm({
   customers,
   products,
-  saleQty,
-  setSaleQty,
-  selectedProductId,
-  setSelectedProductId,
+  orderLines,
+  setOrderLines,
   selectedCustomerPhone,
   setSelectedCustomerPhone,
-  product,
   saleTotal,
   saleProfit,
-  saleSize,
-  setSaleSize,
   onSave
 }) {
+  function updateLine(id, field, value) {
+    setOrderLines((lines) => lines.map((line) => {
+      if (line.id !== id) return line;
+      const next = { ...line, [field]: value };
+      if (field === 'productId') {
+        const product = products.find((item) => item.id === Number(value));
+        next.productSize = product?.size || '';
+        next.quantity = 1;
+      }
+      return next;
+    }));
+  }
+
+  function addLine() {
+    const product = products[0];
+    if (!product) return;
+    setOrderLines((lines) => [...lines, {
+      id: Date.now(),
+      productId: product.id,
+      productSize: product.size || '',
+      quantity: 1
+    }]);
+  }
+
+  function removeLine(id) {
+    setOrderLines((lines) => (lines.length > 1 ? lines.filter((line) => line.id !== id) : lines));
+  }
+
   return (
     <div className="stack form-stack">
       <SelectField label="Customer" value={selectedCustomerPhone} onChange={setSelectedCustomerPhone} icon={<UserRound />}>
@@ -1045,27 +1150,57 @@ function SalesForm({
         {customers.map((customer) => <option key={customer.phone} value={customer.phone}>{customer.name}</option>)}
       </SelectField>
       <Field label="Phone Number" value={selectedCustomerPhone} icon={<UsersRound />} />
-      <SelectField label="Product" value={selectedProductId} onChange={setSelectedProductId} icon={<ShoppingBag />}>
-        {products.length === 0 && <option value="">Add product first</option>}
-        {products.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-      </SelectField>
-      <EditableField label="Product Size" value={saleSize} onChange={setSaleSize} icon={<Archive />} placeholder="Enter size" />
+
+      <div className="section-title">
+        <h2>Order Items</h2>
+        <button className="small-action" onClick={addLine}><Plus size={16} /> Add</button>
+      </div>
+      <div className="order-lines">
+        {orderLines.map((line, index) => {
+          const product = products.find((item) => item.id === Number(line.productId));
+          const maxQty = Math.max(1, Number(product?.qty || 1));
+
+          return (
+            <div className="order-line-card glass" key={line.id}>
+              <div className="order-line-head">
+                <strong>Item {index + 1}</strong>
+                {orderLines.length > 1 && <button onClick={() => removeLine(line.id)}><Trash2 size={14} /></button>}
+              </div>
+              <SelectField label="Product" value={line.productId} onChange={(value) => updateLine(line.id, 'productId', value)} icon={<ShoppingBag />}>
+                {products.length === 0 && <option value="">Add product first</option>}
+                {products.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+              </SelectField>
+              <EditableField label="Product Size" value={line.productSize} onChange={(value) => updateLine(line.id, 'productSize', value)} icon={<Archive />} placeholder="Enter size" />
+              <div className="field glass">
+                <span>Quantity</span>
+                <div className="stepper">
+                  <button onClick={() => updateLine(line.id, 'quantity', Math.max(1, Number(line.quantity || 1) - 1))}><Minus size={16} /></button>
+                  <strong>{line.quantity}</strong>
+                  <button onClick={() => updateLine(line.id, 'quantity', Math.min(maxQty, Number(line.quantity || 1) + 1))}><Plus size={16} /></button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {products.length === 0 && <EmptyState title="No products yet" text="Add products before recording an order." />}
+      </div>
+
       <div className="field glass">
-        <span>Quantity</span>
-        <div className="stepper">
-          <button onClick={() => setSaleQty(Math.max(1, saleQty - 1))}><Minus size={16} /></button>
-          <strong>{saleQty}</strong>
-          <button onClick={() => setSaleQty(Math.min(product?.qty || 1, saleQty + 1))}><Plus size={16} /></button>
-        </div>
+        <Check size={17} />
+        <span>Order Status</span>
+        <strong>Pending</strong>
+      </div>
+      <div className="field glass">
+        <Archive size={17} />
+        <span>Stock Action</span>
+        <strong>Reserved</strong>
       </div>
       <div className="total-card glass">
-        <div><span>Total Amount</span><strong>{money.format(saleTotal)}</strong></div>
+        <div><span>Order Total</span><strong>{money.format(saleTotal)}</strong></div>
         <div><span>Profit Est.</span><strong>{money.format(saleProfit)}</strong></div>
       </div>
-      <Field label="Payment Status" value="Paid" icon={<Check />} good />
-      <Field label="Delivery Status" value="To be Delivered" icon={<ClipboardList />} />
       <Field label="Order Date" value={today} icon={<CalendarDays />} />
-      <button className="primary-btn" onClick={onSave} disabled={!product || product.qty <= 0}>Save Sale</button>
+      <button className="primary-btn" onClick={onSave} disabled={!products.length || !selectedCustomerPhone || !orderLines.length}>Save Pending Order</button>
     </div>
   );
 }
@@ -1149,6 +1284,8 @@ function Reports({
   hasPin,
   appVersion,
   sales,
+  onChangeOrderStatus,
+  onDeleteOrder,
   onViewSale
 }) {
   const [pin, setPin] = useState('');
@@ -1156,10 +1293,11 @@ function Reports({
 
   return (
     <div className="stack">
-      <div className="segmented glass three-way">
+      <div className="segmented glass four-way">
         <button className={view === 'expenses' ? 'selected' : ''} onClick={() => setView('expenses')}>Expenses</button>
         <button className={view === 'reports' ? 'selected' : ''} onClick={() => setView('reports')}>Reports</button>
         <button className={view === 'profit' ? 'selected' : ''} onClick={() => setView('profit')}>Profit View</button>
+        <button className={view === 'today' ? 'selected' : ''} onClick={() => setView('today')}>Today</button>
       </div>
       <button className="settings-card glass" onClick={onEditSettings}>
         <Settings size={20} />
@@ -1214,8 +1352,8 @@ function Reports({
           </div>
           <div className="report-card glass">
             <h2>Sales History</h2>
-            {sales.length === 0 && <p className="empty-note">No saved sales yet.</p>}
-            {sales.slice(0, 8).map((sale) => (
+            {sales.filter((sale) => orderStatus(sale) === 'sold').length === 0 && <p className="empty-note">No sold orders yet.</p>}
+            {sales.filter((sale) => orderStatus(sale) === 'sold').slice(0, 8).map((sale) => (
               <button className="sale-history-row" key={sale.id} onClick={() => onViewSale(sale)}>
                 <span>{sale.productName}</span>
                 <strong>{money.format(sale.total)}</strong>
@@ -1224,15 +1362,72 @@ function Reports({
             ))}
           </div>
         </>
-      ) : (
+      ) : view === 'profit' ? (
         <ProfitView profitView={profitView} sales={sales} />
+      ) : (
+        <TodaysOrders
+          sales={sales}
+          onChangeOrderStatus={onChangeOrderStatus}
+          onDeleteOrder={onDeleteOrder}
+          onViewSale={onViewSale}
+        />
       )}
+    </div>
+  );
+}
+
+function TodaysOrders({ sales, onChangeOrderStatus, onDeleteOrder, onEditOrder, onViewSale }) {
+  const todaysSales = sales.filter((sale) => isToday(sale.createdAt));
+
+  return (
+    <div className="today-orders">
+      <div className="section-title">
+        <h2>Today's Orders</h2>
+        <span className="today-count">{todaysSales.length}</span>
+      </div>
+      {todaysSales.length === 0 && <EmptyState title="No orders today" text="Pending and sold orders created today will appear here." />}
+      {todaysSales.map((sale) => {
+        const status = orderStatus(sale);
+        const items = orderItems(sale);
+
+        return (
+          <article className="today-order-card glass" key={sale.id}>
+            <div className="today-order-head">
+              <div>
+                <strong>{sale.customerName}</strong>
+                <span>{sale.phone || 'No phone'} - {formatReceiptDate(sale.createdAt)}</span>
+              </div>
+              <em className={`status-pill ${status}`}>{status}</em>
+            </div>
+            <div className="today-order-items">
+              {items.map((item, index) => (
+                <p key={`${sale.id}-${index}`}>
+                  <span>{item.productName} - Size {item.productSize || '-'}</span>
+                  <strong>{item.quantity} x {money.format(item.unitPrice || 0)}</strong>
+                </p>
+              ))}
+            </div>
+            <div className="today-order-total">
+              <span>{sale.receiptSharedAt ? 'Receipt shared' : sale.receiptGenerated ? 'Receipt generated' : 'No receipt shared'}</span>
+              <strong>{money.format(sale.total || 0)}</strong>
+            </div>
+            <div className="today-order-actions">
+              {status === 'pending' && <button onClick={() => onChangeOrderStatus(sale, 'sold')}>Mark Sold</button>}
+              {status === 'pending' && <button className="soft-danger" onClick={() => onChangeOrderStatus(sale, 'cancelled')}>Cancel</button>}
+              <button onClick={() => onEditOrder(sale)}>Edit</button>
+              <button onClick={() => onViewSale(sale)}>Receipt</button>
+              <button className="soft-danger" onClick={() => onDeleteOrder(sale)}>Delete</button>
+            </div>
+          </article>
+        );
+      })}
     </div>
   );
 }
 
 function ProfitView({ profitView, sales }) {
   const { current, sold, productRows } = profitView;
+  const soldSales = sales.filter((sale) => orderStatus(sale) === 'sold');
 
   return (
     <div className="profit-view">
@@ -1271,8 +1466,8 @@ function ProfitView({ profitView, sales }) {
 
       <div className="report-card glass">
         <h2>Recent Sold Profit</h2>
-        {sales.length === 0 && <EmptyState title="No sales yet" text="Sold profit appears after recording sales." />}
-        {sales.slice(0, 6).map((sale) => {
+        {soldSales.length === 0 && <EmptyState title="No sold orders yet" text="Sold profit appears after orders are marked sold." />}
+        {soldSales.slice(0, 6).map((sale) => {
           const saleTotalValue = toMoneyNumber(sale.total);
           const saleProfitValue = toMoneyNumber(sale.profit);
           const saleCostValue = Math.max(0, saleTotalValue - saleProfitValue);
@@ -1304,7 +1499,7 @@ function EmptyState({ title, text }) {
   );
 }
 
-function Receipt({ sale }) {
+function Receipt({ sale, onReceiptShared }) {
   const [shareError, setShareError] = useState('');
   const receipt = sale || {
     id: 'preview',
@@ -1319,13 +1514,12 @@ function Receipt({ sale }) {
   };
   const receiptNo = `LLT-2026-${String(receipt.id).padStart(4, '0')}`;
   const receiptDate = formatReceiptDate(receipt.createdAt);
-  const receiptQuantity = Math.max(1, toMoneyNumber(receipt.quantity) || 1);
-  const receiptUnitPrice = toMoneyNumber(receipt.unitPrice) || toMoneyNumber(receipt.total) / receiptQuantity;
+  const receiptItems = orderItems(receipt);
 
   async function shareReceipt() {
     setShareError('');
     try {
-      const pdf = await createReceiptPdf({ ...receipt, receiptNo, receiptDate, unitPrice: receiptUnitPrice });
+      const pdf = await createReceiptPdf({ ...receipt, receiptNo, receiptDate, items: receiptItems });
       const blob = pdf.output('blob');
       const file = new File([blob], `${receiptNo}.pdf`, { type: 'application/pdf' });
 
@@ -1338,6 +1532,7 @@ function Receipt({ sale }) {
         files: [file],
         title: `Receipt ${receiptNo}`
       });
+      onReceiptShared?.(receipt);
     } catch (error) {
       if (error?.name === 'AbortError') return;
       setShareError('Receipt PDF sharing could not be completed. Please try again from the installed app.');
@@ -1353,10 +1548,12 @@ function Receipt({ sale }) {
         <div className="receipt-lines">
           <p><b>Customer</b><em>{receipt.customerName}</em></p>
           <p><b>Phone</b><em>{receipt.phone || '-'}</em></p>
-          <p><b>Item</b><em>{receipt.productName}</em></p>
-          <p><b>Size</b><em>{receipt.productSize}</em></p>
-          <p><b>Qty</b><em>{receipt.quantity}</em></p>
-          <p><b>Unit Price</b><em>{money.format(receiptUnitPrice)}</em></p>
+          {receiptItems.map((item, index) => (
+            <p key={`${receipt.id}-${index}`}>
+              <b>{item.productName}</b>
+              <em>{item.quantity} x {money.format(item.unitPrice || 0)} - Size {item.productSize || '-'}</em>
+            </p>
+          ))}
           <p><b>Total</b><em>{money.format(receipt.total)}</em></p>
           <p><b>Balance</b><em className="ok">0</em></p>
         </div>
@@ -1409,17 +1606,17 @@ async function createReceiptPdf(receipt) {
   drawPdfRow(doc, 'Phone', receipt.phone || '-', margin + 8, right - 8, y);
   y += 11;
 
+  const items = receipt.items || orderItems(receipt);
+  const itemBoxHeight = Math.max(58, 18 + items.length * 10);
   doc.setFillColor(255, 248, 253);
-  doc.roundedRect(margin + 8, y, contentWidth - 16, 58, 4, 4, 'F');
+  doc.roundedRect(margin + 8, y, contentWidth - 16, itemBoxHeight, 4, 4, 'F');
   y += 10;
-  drawPdfRow(doc, 'Item', receipt.productName || '-', margin + 14, right - 14, y);
-  y += 9;
-  drawPdfRow(doc, 'Size', receipt.productSize || '-', margin + 14, right - 14, y);
-  y += 9;
-  drawPdfRow(doc, 'Quantity', String(receipt.quantity || 1), margin + 14, right - 14, y);
-  y += 9;
-  drawPdfRow(doc, 'Unit Price', pdfMoney(receipt.unitPrice || receipt.total || 0), margin + 14, right - 14, y);
-  y += 9;
+  items.forEach((item) => {
+    const itemLabel = `${item.productName || '-'} / Size ${item.productSize || '-'}`;
+    const itemValue = `${item.quantity || 1} x ${pdfMoney(item.unitPrice || 0)}`;
+    drawPdfRow(doc, itemLabel, itemValue, margin + 14, right - 14, y);
+    y += 10;
+  });
   drawPdfRow(doc, 'Balance', '0', margin + 14, right - 14, y);
   y += 18;
 

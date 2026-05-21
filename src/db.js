@@ -40,32 +40,154 @@ export async function seedDatabase({ products, customers, expenses }) {
   });
 }
 
-export async function recordSale({ product, quantity, customerName, phone, productSize, lowStockThreshold = 10 }) {
-  const newQuantity = Math.max(0, product.qty - quantity);
-  const updatedProduct = {
-    ...product,
-    qty: newQuantity,
-    status: stockStatus(newQuantity, lowStockThreshold)
-  };
+function saleItems(sale) {
+  if (Array.isArray(sale.items) && sale.items.length) return sale.items;
+  return [{
+    productId: sale.productId,
+    productName: sale.productName,
+    productSize: sale.productSize,
+    quantity: Number(sale.quantity || 1),
+    unitPrice: Number(sale.unitPrice || sale.total || 0),
+    costPrice: Number(sale.costPrice || Math.max(0, Number(sale.total || 0) - Number(sale.profit || 0)))
+  }];
+}
+
+function totalsFromItems(items) {
+  return items.reduce((acc, item) => {
+    const quantity = Number(item.quantity || 0);
+    const unitPrice = Number(item.unitPrice || 0);
+    const costPrice = Number(item.costPrice || 0);
+    return {
+      quantity: acc.quantity + quantity,
+      total: acc.total + unitPrice * quantity,
+      profit: acc.profit + (unitPrice - costPrice) * quantity
+    };
+  }, { quantity: 0, total: 0, profit: 0 });
+}
+
+async function adjustStock(items, direction, lowStockThreshold) {
+  const updatedProducts = [];
+
+  for (const item of items) {
+    const product = await db.products.get(Number(item.productId));
+    if (!product) continue;
+    const nextQuantity = Math.max(0, Number(product.qty || 0) + direction * Number(item.quantity || 0));
+    const updatedProduct = {
+      ...product,
+      qty: nextQuantity,
+      status: stockStatus(nextQuantity, lowStockThreshold)
+    };
+    await db.products.put(updatedProduct);
+    updatedProducts.push(updatedProduct);
+  }
+
+  return updatedProducts;
+}
+
+export async function recordSale({ items, customerName, phone, lowStockThreshold = 10 }) {
+  const normalizedItems = items.map((item) => ({
+    productId: Number(item.productId),
+    productName: item.productName,
+    productSize: item.productSize,
+    quantity: Number(item.quantity || 1),
+    unitPrice: Number(item.unitPrice || 0),
+    costPrice: Number(item.costPrice || 0)
+  }));
+  const totals = totalsFromItems(normalizedItems);
+  const firstItem = normalizedItems[0] || {};
   const sale = {
     customerName,
     phone,
-    productId: product.id,
-    productName: product.name,
-    productSize: productSize || product.size,
-    quantity,
-    unitPrice: product.price,
-    total: product.price * quantity,
-    profit: (product.price - product.cost) * quantity,
+    items: normalizedItems,
+    productId: firstItem.productId,
+    productName: normalizedItems.length > 1 ? `${firstItem.productName} +${normalizedItems.length - 1}` : firstItem.productName,
+    productSize: firstItem.productSize,
+    quantity: totals.quantity,
+    unitPrice: firstItem.unitPrice || 0,
+    total: totals.total,
+    profit: totals.profit,
+    status: 'pending',
+    receiptGenerated: false,
+    receiptSharedAt: '',
+    inventoryRestored: false,
     createdAt: new Date().toISOString()
   };
 
+  let updatedProducts = [];
   await db.transaction('rw', db.products, db.sales, async () => {
-    await db.products.put(updatedProduct);
+    updatedProducts = await adjustStock(normalizedItems, -1, lowStockThreshold);
     sale.id = await db.sales.add(sale);
   });
 
-  return { updatedProduct, sale };
+  return { updatedProducts, sale };
+}
+
+export async function updateSaleStatus(id, status, lowStockThreshold = 10) {
+  let sale;
+  let updatedProducts = [];
+
+  await db.transaction('rw', db.products, db.sales, async () => {
+    sale = await db.sales.get(id);
+    if (!sale) throw new Error('Order not found');
+    const previousStatus = sale.status || 'sold';
+    const updates = { status };
+
+    if (status === 'sold') {
+      updates.soldAt = new Date().toISOString();
+    }
+
+    if (status === 'cancelled' && previousStatus !== 'cancelled' && !sale.inventoryRestored) {
+      updatedProducts = await adjustStock(saleItems(sale), 1, lowStockThreshold);
+      updates.cancelledAt = new Date().toISOString();
+      updates.inventoryRestored = true;
+    }
+
+    sale = { ...sale, ...updates };
+    await db.sales.put(sale);
+  });
+
+  return { sale, updatedProducts };
+}
+
+export async function deleteSale(id, lowStockThreshold = 10) {
+  let updatedProducts = [];
+
+  await db.transaction('rw', db.products, db.sales, async () => {
+    const sale = await db.sales.get(id);
+    if (!sale) return;
+    const status = sale.status || 'sold';
+    if (status !== 'cancelled' && !sale.inventoryRestored) {
+      updatedProducts = await adjustStock(saleItems(sale), 1, lowStockThreshold);
+    }
+    await db.sales.delete(id);
+  });
+
+  return { updatedProducts };
+}
+
+export async function markReceiptShared(id) {
+  const sale = await db.sales.get(id);
+  if (!sale) return null;
+  const updated = {
+    ...sale,
+    receiptGenerated: true,
+    receiptSharedAt: new Date().toISOString()
+  };
+  await db.sales.put(updated);
+  return updated;
+}
+
+export async function updateSaleDetails(id, updates) {
+  const sale = await db.sales.get(id);
+  if (!sale) return null;
+  const updated = {
+    ...sale,
+    customerName: updates.customerName?.trim() || sale.customerName,
+    phone: updates.phone?.trim() || sale.phone,
+    updatedAt: new Date().toISOString()
+  };
+  await db.sales.put(updated);
+  return updated;
 }
 
 export async function saveProduct(product, lowStockThreshold = 10) {
@@ -178,7 +300,7 @@ export async function exportBusinessData() {
   return {
     exportedAt: new Date().toISOString(),
     app: 'Luxe & Little Treasures Business Manager',
-    version: '1.0.9',
+    version: '1.1.0',
     products,
     customers,
     sales,

@@ -793,8 +793,16 @@ em {
   grid-template-columns: repeat(3, 1fr);
 }
 
+.segmented.four-way {
+  grid-template-columns: repeat(4, 1fr);
+}
+
 .segmented.three-way button {
   font-size: 12px;
+}
+
+.segmented.four-way button {
+  font-size: 11px;
 }
 
 .segmented .selected {
@@ -849,6 +857,115 @@ em {
   color: var(--muted);
   font-size: 11px;
   font-weight: 700;
+}
+
+.order-lines,
+.today-orders,
+.today-order-items {
+  display: grid;
+  gap: 10px;
+}
+
+.order-line-card,
+.today-order-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 20px;
+}
+
+.order-line-head,
+.today-order-head,
+.today-order-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.order-line-head button {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  color: #b91c50;
+  background: rgba(255, 231, 240, 0.9);
+}
+
+.today-count,
+.status-pill {
+  min-width: 30px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0 10px;
+  border-radius: 14px;
+  color: white;
+  background: linear-gradient(135deg, var(--pink), var(--purple));
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.status-pill.pending {
+  color: #856112;
+  background: #fff4bd;
+}
+
+.status-pill.sold {
+  background: #1fbd5a;
+}
+
+.status-pill.cancelled {
+  color: #b91c50;
+  background: rgba(255, 231, 240, 0.9);
+}
+
+.today-order-head div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.today-order-head span,
+.today-order-items span,
+.today-order-total span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.today-order-items p {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(125, 93, 132, 0.1);
+}
+
+.today-order-items p:last-child {
+  border-bottom: 0;
+}
+
+.today-order-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.today-order-actions button {
+  min-height: 36px;
+  border-radius: 14px;
+  color: white;
+  background: linear-gradient(135deg, var(--pink), var(--purple));
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.today-order-actions .soft-danger {
+  color: #b91c50;
+  background: rgba(255, 231, 240, 0.9);
 }
 
 .settings-card {

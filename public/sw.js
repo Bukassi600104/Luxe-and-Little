@@ -1,4 +1,4 @@
-const CACHE_NAME = 'llt-manager-v7';
+const CACHE_NAME = 'llt-manager-v8';
 const APP_SHELL = ['/', '/manifest.webmanifest', '/apple-touch-icon.png', '/brand-logo.png'];
 
 self.addEventListener('install', (event) => {
