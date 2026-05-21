@@ -152,6 +152,7 @@ button:disabled {
 }
 
 .icon-btn {
+  position: relative;
   width: 40px;
   height: 40px;
   display: grid;
@@ -159,6 +160,22 @@ button:disabled {
   border-radius: 16px;
   color: #6d5572;
   background: rgba(255, 255, 255, 0.48);
+}
+
+.icon-btn i {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  min-width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: white;
+  background: var(--pink);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
 }
 
 .screen-content {

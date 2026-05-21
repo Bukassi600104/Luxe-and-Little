@@ -73,7 +73,7 @@ const defaultSettings = {
   lowStockThreshold: 10
 };
 
-const appVersion = '1.0.5';
+const appVersion = '1.0.6';
 
 async function seedDatabase() {
   await db.open();
@@ -383,7 +383,23 @@ function App() {
   return (
     <main className="app-shell">
       <div className="phone">
-        <Header activeTab={activeTab} />
+        <Header
+          activeTab={activeTab}
+          lowStockCount={lowStockItems.length}
+          onMenu={() => setActiveTab('more')}
+          onBack={() => setActiveTab(activeTab === 'receipt' ? 'sales' : 'dashboard')}
+          onBell={() => {
+            if (lowStockItems.length > 0) {
+              setStockNoticeDismissed(false);
+              return;
+            }
+            setSaleNotice({
+              title: 'No low stock alerts',
+              text: `All stock is above ${lowStockThreshold}.`
+            });
+          }}
+          onSettings={() => setSettingsDraft(settings)}
+        />
         {!stockNoticeDismissed && lowStockItems.length > 0 && (
           <LowStockNotice
             items={lowStockItems}
@@ -760,7 +776,7 @@ function SettingsEditor({ draft, setDraft }) {
   );
 }
 
-function Header({ activeTab }) {
+function Header({ activeTab, lowStockCount, onMenu, onBack, onBell, onSettings }) {
   const titles = {
     dashboard: 'Dashboard',
     inventory: 'Inventory',
@@ -769,15 +785,27 @@ function Header({ activeTab }) {
     more: 'Expenses & Reports',
     receipt: 'Receipt'
   };
+  const isDashboard = activeTab === 'dashboard';
 
   return (
     <header className="topbar">
-      <button className="icon-btn">{activeTab === 'dashboard' ? <Menu size={20} /> : <ChevronLeft size={20} />}</button>
+      <button className="icon-btn" onClick={isDashboard ? onMenu : onBack} aria-label={isDashboard ? 'Open more menu' : 'Go back'}>
+        {isDashboard ? <Menu size={20} /> : <ChevronLeft size={20} />}
+      </button>
       <div>
         <span>Luxe & Little Treasures</span>
         <strong>{titles[activeTab]}</strong>
       </div>
-      <button className="icon-btn">{activeTab === 'dashboard' ? <Bell size={20} /> : <Settings size={20} />}</button>
+      <button className="icon-btn" onClick={isDashboard ? onBell : onSettings} aria-label={isDashboard ? 'Show notifications' : 'Open settings'}>
+        {isDashboard ? (
+          <>
+            <Bell size={20} />
+            {lowStockCount > 0 && <i>{lowStockCount}</i>}
+          </>
+        ) : (
+          <Settings size={20} />
+        )}
+      </button>
     </header>
   );
 }
