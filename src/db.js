@@ -300,7 +300,7 @@ export async function exportBusinessData() {
   return {
     exportedAt: new Date().toISOString(),
     app: 'Luxe & Little Treasures Business Manager',
-    version: '1.1.0',
+    version: '1.1.1',
     products,
     customers,
     sales,

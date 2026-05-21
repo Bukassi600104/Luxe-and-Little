@@ -76,7 +76,12 @@ const defaultSettings = {
   lowStockThreshold: 10
 };
 
-const appVersion = '1.1.0';
+const appVersion = '1.1.1';
+const businessContact = {
+  phone: '09076303280',
+  tiktok: '@luxeandlittle.treasures',
+  instagram: '@Luxeandlittle_treasures'
+};
 
 function formatReceiptDate(value) {
   return new Intl.DateTimeFormat('en-GB', {
@@ -252,6 +257,7 @@ function App() {
   const totals = useMemo(() => {
     const soldSales = sales.filter((sale) => orderStatus(sale) === 'sold');
     const pendingSales = sales.filter((sale) => orderStatus(sale) === 'pending');
+    const todaysOrders = sales.filter((sale) => isToday(sale.createdAt));
     const expenseTotal = expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
     const stock = products.reduce((sum, item) => sum + Number(item.qty || 0), 0);
     const salesTotal = soldSales.reduce((sum, item) => sum + Number(item.total || 0), 0);
@@ -275,7 +281,11 @@ function App() {
       stock,
       low: products.filter((item) => Number(item.qty) <= Number(settings?.lowStockThreshold || 10)).length,
       bestName,
-      pendingOrders: pendingSales.length
+      pendingOrders: pendingSales.length,
+      todayOrders: todaysOrders.length,
+      todayPending: todaysOrders.filter((sale) => orderStatus(sale) === 'pending').length,
+      todaySold: todaysOrders.filter((sale) => orderStatus(sale) === 'sold').length,
+      todayCancelled: todaysOrders.filter((sale) => orderStatus(sale) === 'cancelled').length
     };
   }, [expenses, products, sales, settings]);
 
@@ -977,12 +987,32 @@ function Dashboard({ totals, stockValue }) {
         </div>
       </div>
       <StockValueGlance stockValue={stockValue} />
+      <TodaysOrdersGlance totals={totals} />
       <div className="mini-grid">
         <Mini title="Pending Orders" value={totals.pendingOrders} sub="To be delivered" />
         <Mini title="Remaining Stock" value={totals.stock} sub="Across products" />
         <Mini title="Best Seller" value={totals.bestName} sub="From saved sales" />
       </div>
     </div>
+  );
+}
+
+function TodaysOrdersGlance({ totals }) {
+  return (
+    <section className="today-glance glass">
+      <div className="today-glance-head">
+        <div>
+          <span>Today's Orders</span>
+          <strong>{totals.todayOrders}</strong>
+        </div>
+        <ShoppingBag size={21} />
+      </div>
+      <div className="today-glance-grid">
+        <div><span>Pending</span><strong>{totals.todayPending}</strong></div>
+        <div><span>Sold</span><strong>{totals.todaySold}</strong></div>
+        <div><span>Cancelled</span><strong>{totals.todayCancelled}</strong></div>
+      </div>
+    </section>
   );
 }
 
@@ -1542,24 +1572,47 @@ function Receipt({ sale, onReceiptShared }) {
   return (
     <div className="receipt-wrap">
       <div className="receipt-paper">
-        <img src="/brand-logo.png" alt="Luxe and Little Treasures logo" />
-        <span>Receipt No. {receiptNo}</span>
-        <small>{receiptDate}</small>
-        <div className="receipt-lines">
-          <p><b>Customer</b><em>{receipt.customerName}</em></p>
-          <p><b>Phone</b><em>{receipt.phone || '-'}</em></p>
-          {receiptItems.map((item, index) => (
-            <p key={`${receipt.id}-${index}`}>
-              <b>{item.productName}</b>
-              <em>{item.quantity} x {money.format(item.unitPrice || 0)} - Size {item.productSize || '-'}</em>
-            </p>
-          ))}
-          <p><b>Total</b><em>{money.format(receipt.total)}</em></p>
-          <p><b>Balance</b><em className="ok">0</em></p>
+        <div className="receipt-watermark" aria-hidden="true">
+          <img src="/brand-logo.png" alt="" />
+          <img src="/brand-logo.png" alt="" />
+          <img src="/brand-logo.png" alt="" />
+          <img src="/brand-logo.png" alt="" />
         </div>
-        <div className="receipt-thanks">
-          <strong>Thank you for shopping with us.</strong>
-          <span>We appreciate your patronage and look forward to serving you again.</span>
+        <div className="receipt-body">
+          <img className="receipt-logo" src="/brand-logo.png" alt="Luxe and Little Treasures logo" />
+          <div className="receipt-title">
+            <strong>Purchase Receipt</strong>
+            <span>Beautiful fashion treasures for little ones</span>
+          </div>
+          <div className="receipt-meta-grid">
+            <div><span>Receipt No.</span><strong>{receiptNo}</strong></div>
+            <div><span>Date Issued</span><strong>{receiptDate}</strong></div>
+            <div><span>Customer Full Name</span><strong>{receipt.customerName}</strong></div>
+            <div><span>Phone Number</span><strong>{receipt.phone || '-'}</strong></div>
+          </div>
+          <div className="receipt-lines">
+            {receiptItems.map((item, index) => (
+              <p key={`${receipt.id}-${index}`}>
+                <b>{item.productName} / Size {item.productSize || '-'}</b>
+                <em>{item.quantity} x {money.format(item.unitPrice || 0)}</em>
+              </p>
+            ))}
+            <p><b>Balance</b><em className="ok">0</em></p>
+          </div>
+          <div className="receipt-total-row">
+            <span>Total Paid</span>
+            <strong>{money.format(receipt.total)}</strong>
+          </div>
+          <div className="receipt-thanks">
+            <strong>Thank you for shopping with us.</strong>
+            <span>We appreciate your patronage and look forward to serving you again.</span>
+          </div>
+          <div className="receipt-contact">
+            <strong>Luxe & Little Treasures</strong>
+            <p><WhatsAppIcon /> <span>{businessContact.phone}</span></p>
+            <p><TikTokIcon /> <span>{businessContact.tiktok}</span></p>
+            <p><InstagramIcon /> <span>{businessContact.instagram}</span></p>
+          </div>
         </div>
       </div>
       {shareError && <p className="share-error">{shareError}</p>}
@@ -1568,29 +1621,65 @@ function Receipt({ sale, onReceiptShared }) {
   );
 }
 
+function WhatsAppIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12.04 3.2a8.62 8.62 0 0 0-7.38 13.06l-.96 3.52 3.6-.94A8.63 8.63 0 1 0 12.04 3.2Zm0 1.74a6.9 6.9 0 1 1-3.54 12.82l-.26-.16-2.14.56.57-2.08-.17-.27a6.9 6.9 0 0 1 5.54-10.87Zm-2.7 3.28c-.15 0-.39.06-.59.28-.2.22-.77.75-.77 1.84 0 1.08.79 2.13.9 2.28.11.15 1.53 2.45 3.8 3.33 1.88.73 2.27.58 2.68.55.41-.04 1.32-.54 1.51-1.06.19-.52.19-.96.13-1.06-.06-.09-.21-.15-.45-.27-.24-.12-1.42-.7-1.64-.78-.22-.08-.38-.12-.54.12-.16.24-.62.78-.76.94-.14.16-.28.18-.52.06-.24-.12-1.02-.38-1.94-1.2-.72-.64-1.2-1.43-1.34-1.67-.14-.24-.02-.37.1-.49.11-.11.24-.28.36-.42.12-.14.16-.24.24-.4.08-.16.04-.3-.02-.42-.06-.12-.54-1.3-.74-1.78-.19-.46-.39-.4-.54-.41h-.47Z" />
+    </svg>
+  );
+}
+
+function TikTokIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M14.9 3.2c.28 2.12 1.47 3.39 3.56 3.54v3.02a6.53 6.53 0 0 1-3.5-1.05v5.55c0 3.18-2.04 5.54-5.12 5.54-2.66 0-4.7-1.76-4.7-4.37 0-2.86 2.26-4.75 5.36-4.42v3.08c-1.33-.2-2.18.45-2.18 1.55 0 .9.69 1.49 1.55 1.49 1.09 0 1.76-.75 1.76-2.22V3.2h3.27Z" />
+    </svg>
+  );
+}
+
+function InstagramIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8.1 3.8h7.8a4.32 4.32 0 0 1 4.3 4.3v7.8a4.32 4.32 0 0 1-4.3 4.3H8.1a4.32 4.32 0 0 1-4.3-4.3V8.1a4.32 4.32 0 0 1 4.3-4.3Zm0 1.9a2.42 2.42 0 0 0-2.4 2.4v7.8a2.42 2.42 0 0 0 2.4 2.4h7.8a2.42 2.42 0 0 0 2.4-2.4V8.1a2.42 2.42 0 0 0-2.4-2.4H8.1Zm3.9 2.7a3.6 3.6 0 1 1 0 7.2 3.6 3.6 0 0 1 0-7.2Zm0 1.9a1.7 1.7 0 1 0 0 3.4 1.7 1.7 0 0 0 0-3.4Zm4.05-2.27a.84.84 0 1 1 0 1.68.84.84 0 0 1 0-1.68Z" />
+    </svg>
+  );
+}
+
 async function createReceiptPdf(receipt) {
   const { jsPDF } = await import('jspdf');
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 18;
   const contentWidth = pageWidth - margin * 2;
   const right = pageWidth - margin;
-  let y = 22;
+  let y = 24;
 
   doc.setFillColor(255, 247, 251);
-  doc.rect(0, 0, pageWidth, doc.internal.pageSize.getHeight(), 'F');
+  doc.rect(0, 0, pageWidth, pageHeight, 'F');
+  doc.setFillColor(255, 254, 242);
+  doc.circle(pageWidth - 18, 16, 48, 'F');
+  doc.setFillColor(248, 241, 255);
+  doc.circle(pageWidth - 4, pageHeight - 18, 58, 'F');
+  doc.setTextColor(255, 232, 245);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(28);
+  ['L&LT', 'L&LT', 'L&LT', 'L&LT'].forEach((mark, index) => {
+    const positions = [[32, 76], [150, 114], [54, 188], [150, 236]];
+    doc.text(mark, positions[index][0], positions[index][1], { angle: index % 2 ? 14 : -16 });
+  });
   doc.setFillColor(255, 255, 255);
-  doc.roundedRect(margin, 14, contentWidth, 188, 5, 5, 'F');
+  doc.roundedRect(margin, 14, contentWidth, 246, 6, 6, 'F');
 
   doc.setTextColor(255, 47, 152);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(20);
-  doc.text('Luxe & Little Treasures', pageWidth / 2, y, { align: 'center' });
-  y += 7;
+  doc.setFontSize(22);
+  doc.text('Luxe & Little Treasures', pageWidth / 2, y + 10, { align: 'center' });
+  y += 26;
   doc.setTextColor(118, 95, 121);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
-  doc.text('Customer Receipt', pageWidth / 2, y, { align: 'center' });
+  doc.text('Purchase Receipt', pageWidth / 2, y, { align: 'center' });
   y += 15;
 
   doc.setDrawColor(234, 220, 236);
@@ -1637,8 +1726,47 @@ async function createReceiptPdf(receipt) {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
   doc.text('We appreciate your patronage and look forward to serving you again.', pageWidth / 2, y, { align: 'center' });
+  y += 17;
+
+  doc.setFillColor(255, 248, 253);
+  doc.roundedRect(margin + 8, y, contentWidth - 16, 30, 4, 4, 'F');
+  doc.setTextColor(145, 54, 221);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.text('Luxe & Little Treasures', pageWidth / 2, y + 8, { align: 'center' });
+  doc.setTextColor(118, 95, 121);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  drawPdfSocialIcon(doc, 'whatsapp', 62, y + 15);
+  doc.text(businessContact.phone, 68, y + 16);
+  drawPdfSocialIcon(doc, 'tiktok', 62, y + 22);
+  doc.text(businessContact.tiktok, 68, y + 23);
+  drawPdfSocialIcon(doc, 'instagram', 120, y + 22);
+  doc.text(businessContact.instagram, 126, y + 23);
 
   return doc;
+}
+
+function drawPdfSocialIcon(doc, type, x, y) {
+  doc.setDrawColor(255, 47, 152);
+  doc.setFillColor(255, 47, 152);
+  if (type === 'whatsapp') {
+    doc.circle(x, y - 1.2, 2.2, 'S');
+    doc.line(x - 1, y + 0.9, x - 2, y + 2.4);
+    doc.line(x - 0.8, y - 1.2, x + 0.8, y + 0.3);
+    return;
+  }
+
+  if (type === 'tiktok') {
+    doc.line(x, y - 3, x, y + 1);
+    doc.line(x, y - 3, x + 2.2, y - 2.2);
+    doc.circle(x - 1.2, y + 1.2, 1.2, 'S');
+    return;
+  }
+
+  doc.roundedRect(x - 2.2, y - 3.4, 4.4, 4.4, 0.8, 0.8, 'S');
+  doc.circle(x, y - 1.2, 1, 'S');
+  doc.circle(x + 1.35, y - 2.7, 0.25, 'F');
 }
 
 function drawPdfRow(doc, label, value, left, right, y) {
