@@ -73,6 +73,8 @@ const defaultSettings = {
   lowStockThreshold: 10
 };
 
+const appVersion = '1.0.5';
+
 async function seedDatabase() {
   await db.open();
 }
@@ -98,11 +100,18 @@ function App() {
   const [security, setSecurity] = useState(null);
   const [pinDraft, setPinDraft] = useState('');
   const [pinError, setPinError] = useState('');
+  const [stockNoticeDismissed, setStockNoticeDismissed] = useState(false);
+  const [saleNotice, setSaleNotice] = useState(null);
 
   const selectedProduct = products.find((item) => item.id === Number(selectedProductId)) || products[0] || null;
   const selectedCustomer = customers.find((item) => item.phone === selectedCustomerPhone) || customers[0] || null;
   const saleTotal = selectedProduct ? selectedProduct.price * saleQty : 0;
   const saleProfit = selectedProduct ? (selectedProduct.price - selectedProduct.cost) * saleQty : 0;
+  const lowStockThreshold = Number(settings?.lowStockThreshold || defaultSettings.lowStockThreshold);
+  const lowStockItems = useMemo(
+    () => products.filter((item) => Number(item.qty || 0) <= lowStockThreshold),
+    [products, lowStockThreshold]
+  );
 
   useEffect(() => {
     if (!isStandalone || !showSplash) return;
@@ -170,6 +179,12 @@ function App() {
   }, [expenses, products, sales, settings]);
 
   useEffect(() => {
+    if (!saleNotice) return;
+    const timer = window.setTimeout(() => setSaleNotice(null), 4200);
+    return () => window.clearTimeout(timer);
+  }, [saleNotice]);
+
+  useEffect(() => {
     let active = true;
 
     async function loadPhoneStorage() {
@@ -233,6 +248,13 @@ function App() {
     });
     setSelectedProductId(saved.id);
     setProductDraft(null);
+    if (Number(saved.qty || 0) <= lowStockThreshold) {
+      setStockNoticeDismissed(false);
+      setSaleNotice({
+        title: 'Low stock item saved',
+        text: `${saved.name || 'This product'} has ${saved.qty} left.`
+      });
+    }
   }
 
   async function handleDeleteProduct(id) {
@@ -276,6 +298,13 @@ function App() {
   async function handleSavePin(pin) {
     const saved = await saveSecuritySettings(pin);
     setSecurity(saved);
+  }
+
+  async function handleUpdateSettings(nextSettings) {
+    const saved = await saveBusinessSettings(nextSettings);
+    setSettings(saved);
+    setSettingsDraft(null);
+    setStockNoticeDismissed(false);
   }
 
   async function handleExportData() {
@@ -327,6 +356,13 @@ function App() {
     setLastSale(sale);
     setSaleQty(1);
     setActiveTab('receipt');
+    if (Number(updatedProduct.qty || 0) <= lowStockThreshold) {
+      setStockNoticeDismissed(false);
+      setSaleNotice({
+        title: 'Stock is now low',
+        text: `${updatedProduct.name} has ${updatedProduct.qty} left.`
+      });
+    }
     await reloadBusinessData();
   }
 
@@ -348,6 +384,18 @@ function App() {
     <main className="app-shell">
       <div className="phone">
         <Header activeTab={activeTab} />
+        {!stockNoticeDismissed && lowStockItems.length > 0 && (
+          <LowStockNotice
+            items={lowStockItems}
+            threshold={lowStockThreshold}
+            onClose={() => setStockNoticeDismissed(true)}
+            onView={() => {
+              setActiveTab('inventory');
+              setStockNoticeDismissed(true);
+            }}
+          />
+        )}
+        {saleNotice && <ToastNotice notice={saleNotice} onClose={() => setSaleNotice(null)} />}
         <section className="screen-content">
           {activeTab === 'dashboard' && <Dashboard totals={totals} />}
           {activeTab === 'inventory' && (
@@ -399,6 +447,7 @@ function App() {
               onClearData={handleClearData}
               onSavePin={handleSavePin}
               hasPin={Boolean(security?.pinHash)}
+              appVersion={appVersion}
               sales={sales}
               onViewSale={(sale) => {
                 setLastSale(sale);
@@ -429,7 +478,7 @@ function App() {
           <SettingsSheet
             settings={settingsDraft}
             onClose={() => setSettingsDraft(null)}
-            onSave={completeSetup}
+            onSave={handleUpdateSettings}
           />
         )}
         {customerDraft && (
@@ -759,6 +808,35 @@ function Dashboard({ totals }) {
   );
 }
 
+function LowStockNotice({ items, threshold, onClose, onView }) {
+  const preview = items.slice(0, 2).map((item) => `${item.name} (${item.qty})`).join(', ');
+
+  return (
+    <aside className="stock-notice glass" role="status" aria-live="polite">
+      <AlertTriangle size={19} />
+      <div>
+        <strong>{items.length} low stock {items.length === 1 ? 'item' : 'items'}</strong>
+        <span>{preview || `Threshold is ${threshold}`} {items.length > 2 ? `+${items.length - 2} more` : ''}</span>
+      </div>
+      <button onClick={onView}>View</button>
+      <button className="notice-close" onClick={onClose} aria-label="Dismiss low stock notice"><X size={15} /></button>
+    </aside>
+  );
+}
+
+function ToastNotice({ notice, onClose }) {
+  return (
+    <aside className="toast-notice glass" role="status" aria-live="polite">
+      <Bell size={18} />
+      <div>
+        <strong>{notice.title}</strong>
+        <span>{notice.text}</span>
+      </div>
+      <button onClick={onClose} aria-label="Dismiss notification"><X size={15} /></button>
+    </aside>
+  );
+}
+
 function Metric({ title, value, note, icon, tone }) {
   return (
     <article className={`metric-card glass ${tone}`}>
@@ -923,6 +1001,7 @@ function Reports({
   onClearData,
   onSavePin,
   hasPin,
+  appVersion,
   sales,
   onViewSale
 }) {
@@ -957,6 +1036,7 @@ function Reports({
           <input value={pin} inputMode="numeric" maxLength="6" placeholder={hasPin ? 'Enter new PIN' : 'Create 4-6 digit PIN'} onChange={(event) => setPin(event.target.value)} />
           <button onClick={() => pin.length >= 4 && onSavePin(pin)}>{hasPin ? 'Update' : 'Save'}</button>
         </div>
+        <span className="app-version">Version {appVersion} - Phone database</span>
       </div>
       {view === 'expenses' ? (
         <>

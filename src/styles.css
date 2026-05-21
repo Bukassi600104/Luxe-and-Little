@@ -19,13 +19,38 @@
 
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
+  position: fixed;
+  inset: 0;
+  width: 100%;
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  min-height: 100dvh;
   overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+input,
+select,
+textarea {
+  font-size: 16px;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 button {
@@ -41,10 +66,14 @@ button:disabled {
 
 .app-shell,
 .install-page {
-  min-height: 100vh;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
   display: grid;
   place-items: center;
   padding: 18px;
+  overflow: hidden;
+  overscroll-behavior: none;
   background:
     radial-gradient(circle at 4% 7%, rgba(255, 47, 152, 0.28), transparent 34%),
     radial-gradient(circle at 96% 4%, rgba(216, 251, 49, 0.52), transparent 31%),
@@ -135,6 +164,8 @@ button:disabled {
 .screen-content {
   height: calc(100% - 154px);
   overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 0 2px 98px;
   scrollbar-width: none;
 }
@@ -231,6 +262,80 @@ button:disabled {
 .alert-row div {
   display: grid;
   gap: 3px;
+}
+
+.stock-notice,
+.toast-notice {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  z-index: 15;
+  display: grid;
+  align-items: center;
+  gap: 10px;
+  border-radius: 22px;
+  color: var(--ink);
+}
+
+.stock-notice {
+  top: 70px;
+  grid-template-columns: 24px 1fr 48px 32px;
+  min-height: 68px;
+  padding: 11px 10px 11px 13px;
+}
+
+.toast-notice {
+  bottom: 96px;
+  grid-template-columns: 24px 1fr 32px;
+  min-height: 62px;
+  padding: 11px 10px 11px 13px;
+}
+
+.stock-notice svg,
+.toast-notice svg {
+  color: var(--pink);
+}
+
+.stock-notice div,
+.toast-notice div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.stock-notice strong,
+.toast-notice strong {
+  font-size: 13px;
+}
+
+.stock-notice span,
+.toast-notice span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stock-notice button,
+.toast-notice button {
+  height: 32px;
+  border-radius: 13px;
+  color: white;
+  background: linear-gradient(135deg, var(--pink), var(--purple));
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.stock-notice .notice-close,
+.toast-notice button {
+  width: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: #765f79;
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .mini-card {
@@ -397,7 +502,7 @@ em {
   color: var(--ink);
   background: transparent;
   font: inherit;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 850;
   text-align: right;
 }
@@ -609,8 +714,13 @@ em {
   color: var(--ink);
   background: rgba(255, 255, 255, 0.72);
   font: inherit;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 800;
+}
+
+.app-version {
+  justify-self: center;
+  padding-top: 2px;
 }
 
 .sale-history-row {
@@ -706,6 +816,8 @@ em {
 .sheet {
   max-height: 82%;
   overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   display: grid;
   gap: 10px;
   padding: 16px 16px 22px;
@@ -763,7 +875,7 @@ em {
   color: var(--ink);
   background: transparent;
   font: inherit;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 800;
 }
 
@@ -968,6 +1080,10 @@ em {
   padding: 14px;
   border-radius: 28px;
   margin-top: 2px;
+  max-height: min(520px, 58vh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .setup-scroll::-webkit-scrollbar {
@@ -1022,7 +1138,7 @@ em {
   color: var(--ink);
   background: rgba(255, 255, 255, 0.72);
   font: inherit;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 750;
 }
 
@@ -1123,6 +1239,7 @@ em {
   color: var(--ink);
   background: rgba(255, 255, 255, 0.72);
   font: inherit;
+  font-size: 16px;
   font-weight: 850;
 }
 
