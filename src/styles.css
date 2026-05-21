@@ -907,16 +907,18 @@ em {
 }
 
 .setup-screen {
-  align-content: start;
+  align-content: center;
   place-items: stretch;
-  gap: 12px;
+  gap: 20px;
+  padding-top: clamp(46px, 8vh, 76px);
+  padding-bottom: max(32px, env(safe-area-inset-bottom));
 }
 
 .setup-hero {
   display: grid;
   justify-items: center;
-  gap: 8px;
-  padding: 8px 8px 0;
+  gap: 10px;
+  padding: 0 8px;
   text-align: center;
 }
 
@@ -965,6 +967,7 @@ em {
   gap: 12px;
   padding: 14px;
   border-radius: 28px;
+  margin-top: 2px;
 }
 
 .setup-scroll::-webkit-scrollbar {
@@ -1195,5 +1198,23 @@ em {
     height: 100vh;
     border-radius: 0;
     border: 0;
+  }
+}
+
+@media (max-height: 760px) {
+  .setup-screen {
+    align-content: start;
+    gap: 14px;
+    padding-top: 34px;
+    padding-bottom: 22px;
+  }
+
+  .setup-hero img {
+    width: 64px;
+    height: 64px;
+  }
+
+  .setup-hero h1 {
+    font-size: 23px;
   }
 }
