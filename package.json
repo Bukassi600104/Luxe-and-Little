@@ -1,7 +1,7 @@
 {
   "name": "luxe-little-treasures-manager",
   "private": true,
-  "version": "1.0.8",
+  "version": "1.0.9",
   "type": "module",
   "scripts": {
     "dev": "node ./node_modules/vite/bin/vite.js --host 127.0.0.1",
@@ -11,6 +11,7 @@
   "dependencies": {
     "@vitejs/plugin-react": "^5.1.1",
     "dexie": "^4.4.2",
+    "jspdf": "^4.2.1",
     "lucide-react": "^0.562.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",

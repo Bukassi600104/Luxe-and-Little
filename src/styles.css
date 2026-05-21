@@ -638,7 +638,8 @@ em {
   font-size: 13px;
 }
 
-.input-field select {
+.input-field select,
+.input-field input {
   min-width: 0;
   max-width: 168px;
   border: 0;
@@ -649,6 +650,10 @@ em {
   font-size: 16px;
   font-weight: 850;
   text-align: right;
+}
+
+.input-field input::placeholder {
+  color: #b19ab5;
 }
 
 .stepper {
@@ -1104,8 +1109,8 @@ em {
 }
 
 .receipt-paper {
-  min-height: 520px;
-  padding: 24px 20px;
+  min-height: 500px;
+  padding: 24px 20px 20px;
   display: grid;
   align-content: start;
   gap: 13px;
@@ -1128,6 +1133,14 @@ em {
   font-weight: 700;
 }
 
+.receipt-paper > small {
+  margin-top: -8px;
+  text-align: center;
+  color: #9a829d;
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .receipt-lines {
   display: grid;
   gap: 4px;
@@ -1143,8 +1156,51 @@ em {
   font-size: 13px;
 }
 
+.receipt-lines p:nth-last-child(2) {
+  margin-top: 4px;
+  padding: 14px 12px;
+  border: 0;
+  border-radius: 16px;
+  color: white;
+  background: linear-gradient(135deg, var(--pink), var(--purple));
+}
+
+.receipt-lines p:nth-last-child(2) b,
+.receipt-lines p:nth-last-child(2) em {
+  color: white;
+}
+
+.receipt-thanks {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 14px;
+  border-radius: 18px;
+  text-align: center;
+  background: #fff8fd;
+}
+
+.receipt-thanks strong {
+  color: var(--pink);
+}
+
+.receipt-thanks span,
+.share-error {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.share-error {
+  margin: 0;
+  padding: 12px;
+  border-radius: 16px;
+  color: #b91c50;
+  background: rgba(255, 231, 240, 0.9);
+}
+
 .whatsapp-btn,
-.pdf-btn,
 .primary-btn {
   height: 54px;
   border-radius: 20px;
@@ -1164,10 +1220,6 @@ em {
 
 .whatsapp-btn {
   background: #1fbd5a;
-}
-
-.pdf-btn {
-  background: linear-gradient(135deg, var(--purple), #b875ff);
 }
 
 .install-phone {
@@ -1517,8 +1569,7 @@ em {
 
   .topbar,
   .tabbar,
-  .whatsapp-btn,
-  .pdf-btn {
+  .whatsapp-btn {
     display: none;
   }
 }

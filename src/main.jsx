@@ -9,7 +9,6 @@ import {
   Check,
   ChevronLeft,
   ClipboardList,
-  Download,
   Edit3,
   Home,
   Menu,
@@ -73,7 +72,19 @@ const defaultSettings = {
   lowStockThreshold: 10
 };
 
-const appVersion = '1.0.8';
+const appVersion = '1.0.9';
+
+function formatReceiptDate(value) {
+  return new Intl.DateTimeFormat('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  }).format(value ? new Date(value) : new Date());
+}
+
+function pdfMoney(value) {
+  return `NGN ${new Intl.NumberFormat('en-NG', { maximumFractionDigits: 0 }).format(Number(value || 0))}`;
+}
 
 function toMoneyNumber(value) {
   return Number(value || 0);
@@ -137,6 +148,7 @@ function App() {
   const [lastSale, setLastSale] = useState(null);
   const [settings, setSettings] = useState(null);
   const [saleQty, setSaleQty] = useState(1);
+  const [saleSize, setSaleSize] = useState('');
   const [selectedProductId, setSelectedProductId] = useState('');
   const [selectedCustomerPhone, setSelectedCustomerPhone] = useState('');
   const [productDraft, setProductDraft] = useState(null);
@@ -159,6 +171,10 @@ function App() {
     [products, lowStockThreshold]
   );
   const profitView = useMemo(() => buildProfitView(products, sales), [products, sales]);
+
+  useEffect(() => {
+    setSaleSize(selectedProduct?.size || '');
+  }, [selectedProduct?.id, selectedProduct?.size]);
 
   useEffect(() => {
     if (!isStandalone || !showSplash) return;
@@ -396,6 +412,7 @@ function App() {
       quantity: saleQty,
       customerName: selectedCustomer.name,
       phone: selectedCustomer.phone,
+      productSize: saleSize,
       lowStockThreshold: settings.lowStockThreshold
     });
     setProducts((items) => items.map((item) => (item.id === updatedProduct.id ? updatedProduct : item)));
@@ -482,6 +499,8 @@ function App() {
               setSelectedCustomerPhone={setSelectedCustomerPhone}
               product={selectedProduct}
               customer={selectedCustomer}
+              saleSize={saleSize}
+              setSaleSize={setSaleSize}
               saleTotal={saleTotal}
               saleProfit={saleProfit}
               onSave={saveSale}
@@ -1015,6 +1034,8 @@ function SalesForm({
   product,
   saleTotal,
   saleProfit,
+  saleSize,
+  setSaleSize,
   onSave
 }) {
   return (
@@ -1028,7 +1049,7 @@ function SalesForm({
         {products.length === 0 && <option value="">Add product first</option>}
         {products.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
       </SelectField>
-      <Field label="Product Size" value={product?.size || '-'} icon={<Archive />} />
+      <EditableField label="Product Size" value={saleSize} onChange={setSaleSize} icon={<Archive />} placeholder="Enter size" />
       <div className="field glass">
         <span>Quantity</span>
         <div className="stepper">
@@ -1046,6 +1067,16 @@ function SalesForm({
       <Field label="Order Date" value={today} icon={<CalendarDays />} />
       <button className="primary-btn" onClick={onSave} disabled={!product || product.qty <= 0}>Save Sale</button>
     </div>
+  );
+}
+
+function EditableField({ label, value, onChange, icon, placeholder }) {
+  return (
+    <label className="field input-field glass">
+      {React.cloneElement(icon, { size: 17 })}
+      <span>{label}</span>
+      <input value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
+    </label>
   );
 }
 
@@ -1274,44 +1305,153 @@ function EmptyState({ title, text }) {
 }
 
 function Receipt({ sale }) {
+  const [shareError, setShareError] = useState('');
   const receipt = sale || {
     id: 'preview',
     customerName: 'Amaka Chinedu',
+    phone: '08000000000',
     productName: 'Princess Tutu Dress',
     productSize: '3-4Y',
+    unitPrice: 12000,
     total: 12000,
-    profit: 5500,
-    quantity: 1
+    quantity: 1,
+    createdAt: new Date().toISOString()
   };
+  const receiptNo = `LLT-2026-${String(receipt.id).padStart(4, '0')}`;
+  const receiptDate = formatReceiptDate(receipt.createdAt);
+  const receiptQuantity = Math.max(1, toMoneyNumber(receipt.quantity) || 1);
+  const receiptUnitPrice = toMoneyNumber(receipt.unitPrice) || toMoneyNumber(receipt.total) / receiptQuantity;
 
-  function shareReceipt() {
-    const text = encodeURIComponent(`Luxe & Little Treasures Receipt\nItem: ${receipt.productName}\nTotal: ${money.format(receipt.total)}\nBalance: 0`);
-    window.open(`https://wa.me/?text=${text}`, '_blank', 'noopener,noreferrer');
-  }
+  async function shareReceipt() {
+    setShareError('');
+    try {
+      const pdf = await createReceiptPdf({ ...receipt, receiptNo, receiptDate, unitPrice: receiptUnitPrice });
+      const blob = pdf.output('blob');
+      const file = new File([blob], `${receiptNo}.pdf`, { type: 'application/pdf' });
 
-  function savePdf() {
-    window.print();
+      if (!navigator.canShare || !navigator.canShare({ files: [file] }) || !navigator.share) {
+        setShareError('Receipt PDF sharing is not available on this device right now. Please try again from the installed app.');
+        return;
+      }
+
+      await navigator.share({
+        files: [file],
+        title: `Receipt ${receiptNo}`
+      });
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
+      setShareError('Receipt PDF sharing could not be completed. Please try again from the installed app.');
+    }
   }
 
   return (
     <div className="receipt-wrap">
       <div className="receipt-paper">
         <img src="/brand-logo.png" alt="Luxe and Little Treasures logo" />
-        <span>Receipt No. LLT-2026-{String(receipt.id).padStart(4, '0')}</span>
+        <span>Receipt No. {receiptNo}</span>
+        <small>{receiptDate}</small>
         <div className="receipt-lines">
           <p><b>Customer</b><em>{receipt.customerName}</em></p>
+          <p><b>Phone</b><em>{receipt.phone || '-'}</em></p>
           <p><b>Item</b><em>{receipt.productName}</em></p>
           <p><b>Size</b><em>{receipt.productSize}</em></p>
           <p><b>Qty</b><em>{receipt.quantity}</em></p>
+          <p><b>Unit Price</b><em>{money.format(receiptUnitPrice)}</em></p>
           <p><b>Total</b><em>{money.format(receipt.total)}</em></p>
-          <p><b>Profit</b><em>{money.format(receipt.profit)}</em></p>
           <p><b>Balance</b><em className="ok">0</em></p>
         </div>
+        <div className="receipt-thanks">
+          <strong>Thank you for shopping with us.</strong>
+          <span>We appreciate your patronage and look forward to serving you again.</span>
+        </div>
       </div>
-      <button className="whatsapp-btn" onClick={shareReceipt}><Share2 size={18} /> Share via WhatsApp</button>
-      <button className="pdf-btn" onClick={savePdf}><Download size={18} /> Save as PDF</button>
+      {shareError && <p className="share-error">{shareError}</p>}
+      <button className="whatsapp-btn" onClick={shareReceipt}><Share2 size={18} /> Share Receipt</button>
     </div>
   );
+}
+
+async function createReceiptPdf(receipt) {
+  const { jsPDF } = await import('jspdf');
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const margin = 18;
+  const contentWidth = pageWidth - margin * 2;
+  const right = pageWidth - margin;
+  let y = 22;
+
+  doc.setFillColor(255, 247, 251);
+  doc.rect(0, 0, pageWidth, doc.internal.pageSize.getHeight(), 'F');
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(margin, 14, contentWidth, 188, 5, 5, 'F');
+
+  doc.setTextColor(255, 47, 152);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(20);
+  doc.text('Luxe & Little Treasures', pageWidth / 2, y, { align: 'center' });
+  y += 7;
+  doc.setTextColor(118, 95, 121);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.text('Customer Receipt', pageWidth / 2, y, { align: 'center' });
+  y += 15;
+
+  doc.setDrawColor(234, 220, 236);
+  doc.line(margin + 8, y, right - 8, y);
+  y += 10;
+
+  drawPdfRow(doc, 'Receipt No.', receipt.receiptNo, margin + 8, right - 8, y);
+  y += 9;
+  drawPdfRow(doc, 'Date', receipt.receiptDate, margin + 8, right - 8, y);
+  y += 9;
+  drawPdfRow(doc, 'Customer', receipt.customerName || '-', margin + 8, right - 8, y);
+  y += 9;
+  drawPdfRow(doc, 'Phone', receipt.phone || '-', margin + 8, right - 8, y);
+  y += 11;
+
+  doc.setFillColor(255, 248, 253);
+  doc.roundedRect(margin + 8, y, contentWidth - 16, 58, 4, 4, 'F');
+  y += 10;
+  drawPdfRow(doc, 'Item', receipt.productName || '-', margin + 14, right - 14, y);
+  y += 9;
+  drawPdfRow(doc, 'Size', receipt.productSize || '-', margin + 14, right - 14, y);
+  y += 9;
+  drawPdfRow(doc, 'Quantity', String(receipt.quantity || 1), margin + 14, right - 14, y);
+  y += 9;
+  drawPdfRow(doc, 'Unit Price', pdfMoney(receipt.unitPrice || receipt.total || 0), margin + 14, right - 14, y);
+  y += 9;
+  drawPdfRow(doc, 'Balance', '0', margin + 14, right - 14, y);
+  y += 18;
+
+  doc.setFillColor(255, 47, 152);
+  doc.roundedRect(margin + 8, y, contentWidth - 16, 18, 4, 4, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.text('Total Paid', margin + 14, y + 11);
+  doc.text(pdfMoney(receipt.total || 0), right - 14, y + 11, { align: 'right' });
+  y += 33;
+
+  doc.setTextColor(35, 18, 39);
+  doc.setFontSize(12);
+  doc.text('Thank you for shopping with us.', pageWidth / 2, y, { align: 'center' });
+  y += 7;
+  doc.setTextColor(118, 95, 121);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.text('We appreciate your patronage and look forward to serving you again.', pageWidth / 2, y, { align: 'center' });
+
+  return doc;
+}
+
+function drawPdfRow(doc, label, value, left, right, y) {
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(118, 95, 121);
+  doc.text(label, left, y);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(35, 18, 39);
+  doc.text(String(value), right, y, { align: 'right', maxWidth: right - left - 46 });
 }
 
 function ProductSheet({ product, onClose, onSave, settings }) {

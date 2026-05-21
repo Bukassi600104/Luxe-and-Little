@@ -40,7 +40,7 @@ export async function seedDatabase({ products, customers, expenses }) {
   });
 }
 
-export async function recordSale({ product, quantity, customerName, phone, lowStockThreshold = 10 }) {
+export async function recordSale({ product, quantity, customerName, phone, productSize, lowStockThreshold = 10 }) {
   const newQuantity = Math.max(0, product.qty - quantity);
   const updatedProduct = {
     ...product,
@@ -52,7 +52,7 @@ export async function recordSale({ product, quantity, customerName, phone, lowSt
     phone,
     productId: product.id,
     productName: product.name,
-    productSize: product.size,
+    productSize: productSize || product.size,
     quantity,
     unitPrice: product.price,
     total: product.price * quantity,
@@ -178,7 +178,7 @@ export async function exportBusinessData() {
   return {
     exportedAt: new Date().toISOString(),
     app: 'Luxe & Little Treasures Business Manager',
-    version: '1.0.8',
+    version: '1.0.9',
     products,
     customers,
     sales,
