@@ -79,7 +79,7 @@ async function seedDatabase() {
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [isInstalled, setIsInstalled] = useState(() => window.matchMedia?.('(display-mode: standalone)').matches || localStorage.getItem('llt-installed-preview') === 'true');
+  const [isStandalone] = useState(() => window.matchMedia?.('(display-mode: standalone)').matches || window.navigator?.standalone === true);
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const [products, setProducts] = useState([]);
@@ -103,6 +103,45 @@ function App() {
   const selectedCustomer = customers.find((item) => item.phone === selectedCustomerPhone) || customers[0] || null;
   const saleTotal = selectedProduct ? selectedProduct.price * saleQty : 0;
   const saleProfit = selectedProduct ? (selectedProduct.price - selectedProduct.cost) * saleQty : 0;
+
+  useEffect(() => {
+    if (!isStandalone) return;
+    const timer = window.setTimeout(() => setShowSplash(false), 1300);
+    return () => window.clearTimeout(timer);
+  }, [isStandalone, showSplash]);
+
+  useEffect(() => {
+    if (!isStandalone || !security?.pinHash || !isUnlocked) return;
+    const idleLimitMs = 5 * 60 * 1000;
+
+    function markActive() {
+      localStorage.setItem('llt-last-active', String(Date.now()));
+    }
+
+    function lockIfIdle() {
+      const lastActive = Number(localStorage.getItem('llt-last-active') || Date.now());
+      if (Date.now() - lastActive > idleLimitMs) {
+        setIsUnlocked(false);
+        setPinDraft('');
+        setShowSplash(true);
+      } else {
+        markActive();
+      }
+    }
+
+    markActive();
+    window.addEventListener('pointerdown', markActive);
+    window.addEventListener('keydown', markActive);
+    window.addEventListener('focus', lockIfIdle);
+    document.addEventListener('visibilitychange', lockIfIdle);
+
+    return () => {
+      window.removeEventListener('pointerdown', markActive);
+      window.removeEventListener('keydown', markActive);
+      window.removeEventListener('focus', lockIfIdle);
+      document.removeEventListener('visibilitychange', lockIfIdle);
+    };
+  }, [isStandalone, isUnlocked, security]);
 
   const totals = useMemo(() => {
     const expenseTotal = expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
@@ -162,11 +201,6 @@ function App() {
     };
   }, []);
 
-  function completeInstallPreview() {
-    localStorage.setItem('llt-installed-preview', 'true');
-    setIsInstalled(true);
-  }
-
   async function unlock() {
     if (security?.pinHash && !(await verifyPin(pinDraft, security))) {
       setPinError('Incorrect PIN');
@@ -174,7 +208,7 @@ function App() {
     }
     setIsUnlocked(true);
     setPinError('');
-    setTimeout(() => setShowSplash(false), 1200);
+    localStorage.setItem('llt-last-active', String(Date.now()));
   }
 
   async function reloadBusinessData() {
@@ -296,16 +330,19 @@ function App() {
     await reloadBusinessData();
   }
 
-  async function completeSetup(nextSettings) {
+  async function completeSetup(nextSettings, pin) {
     const saved = await saveBusinessSettings(nextSettings);
+    const savedSecurity = await saveSecuritySettings(pin);
     setSettings(saved);
+    setSecurity(savedSecurity);
     setSettingsDraft(null);
   }
 
-  if (!isInstalled) return <InstallGate onPreview={completeInstallPreview} />;
-  if (!isUnlocked) return <LoginScreen onUnlock={unlock} security={security} pinDraft={pinDraft} setPinDraft={setPinDraft} pinError={pinError} />;
+  if (!isStandalone) return <InstallGate />;
   if (showSplash) return <SplashScreen />;
   if (!settings?.setupComplete) return <Onboarding settings={settings || defaultSettings} onComplete={completeSetup} />;
+  if (!security?.pinHash) return <Onboarding settings={settings || defaultSettings} onComplete={completeSetup} pinOnly />;
+  if (!isUnlocked) return <LoginScreen onUnlock={unlock} security={security} pinDraft={pinDraft} setPinDraft={setPinDraft} pinError={pinError} />;
 
   return (
     <main className="app-shell">
@@ -429,20 +466,19 @@ function emptyCustomer() {
   return { name: '', phone: '', address: '', balance: 0, notes: '', last: today, orders: 0 };
 }
 
-function InstallGate({ onPreview }) {
+function InstallGate() {
   return (
     <main className="install-page">
       <div className="install-phone glass">
         <img src="/apple-touch-icon.png" className="install-icon" alt="Luxe and Little Treasures icon" />
         <h1>Luxe & Little Treasures</h1>
-        <p>Install the private business manager on your iPhone Home Screen for a full app-style experience.</p>
+        <p>Install the private business manager on your iPhone Home Screen, then open it from the app icon.</p>
         <div className="install-steps">
-          <div><Share2 size={18} /> Tap Safari Share</div>
-          <div><Plus size={18} /> Add to Home Screen</div>
-          <div><Sparkles size={18} /> Open as an app</div>
+          <div><Share2 size={18} /> Open this link in Safari</div>
+          <div><Plus size={18} /> Tap Share, then Add to Home Screen</div>
+          <div><Sparkles size={18} /> Launch from the new Home Screen icon</div>
         </div>
-        <button className="primary-btn" onClick={onPreview}>Preview Installed App</button>
-        <span className="small-note">On iPhone, the real install still uses Safari Share - Add to Home Screen.</span>
+        <span className="small-note">For privacy, the business app only opens from the installed Home Screen icon.</span>
       </div>
     </main>
   );
@@ -490,7 +526,11 @@ function SplashScreen() {
   );
 }
 
-function Onboarding({ settings, onComplete }) {
+function Onboarding({ settings, onComplete, pinOnly = false }) {
+  const [step, setStep] = useState(pinOnly ? 2 : 0);
+  const [pin, setPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [setupError, setSetupError] = useState('');
   const [draft, setDraft] = useState({
     ...defaultSettings,
     ...settings,
@@ -509,46 +549,89 @@ function Onboarding({ settings, onComplete }) {
     setDraft((current) => ({ ...current, [key]: current[key].filter((item) => item !== value) }));
   }
 
+  function nextStep() {
+    setSetupError('');
+    if (step < 2) {
+      setStep((current) => current + 1);
+      return;
+    }
+
+    if (pin.length < 4 || pin.length > 6) {
+      setSetupError('Use a 4-6 digit PIN.');
+      return;
+    }
+
+    if (pin !== confirmPin) {
+      setSetupError('PINs do not match.');
+      return;
+    }
+
+    onComplete(draft, pin);
+  }
+
   return (
     <main className="app-shell">
       <div className="phone setup-screen">
         <div className="setup-hero">
           <img src="/apple-touch-icon.png" alt="" />
-          <span>First setup</span>
-          <h1>Set up your business workspace.</h1>
-          <p>These lists will power Inventory, Sales, Expenses, and Reports.</p>
+          <span>{pinOnly ? 'Security setup' : `Step ${step + 1} of 3`}</span>
+          <h1>{step === 2 ? 'Protect the business records.' : 'Set up your business workspace.'}</h1>
+          <p>{step === 2 ? 'Create a PIN before the dashboard opens.' : 'These lists will power Inventory, Sales, Expenses, and Reports.'}</p>
         </div>
-        <div className="setup-scroll">
-          <CategoryEditor
-            title="Stock Categories"
-            items={draft.stockCategories}
-            placeholder="Add category"
-            onAdd={(value) => addListItem('stockCategories', value)}
-            onRemove={(value) => removeListItem('stockCategories', value)}
-          />
-          <CategoryEditor
-            title="Size Types"
-            items={draft.sizeTypes}
-            placeholder="Add size type"
-            onAdd={(value) => addListItem('sizeTypes', value)}
-            onRemove={(value) => removeListItem('sizeTypes', value)}
-          />
-          <CategoryEditor
-            title="Expense Categories"
-            items={draft.expenseCategories}
-            placeholder="Add expense category"
-            onAdd={(value) => addListItem('expenseCategories', value)}
-            onRemove={(value) => removeListItem('expenseCategories', value)}
-          />
-          <label className="sheet-field setup-threshold">
-            <span>Low Stock Alert Threshold</span>
-            <input
-              type="number"
-              value={draft.lowStockThreshold}
-              onChange={(event) => setDraft((current) => ({ ...current, lowStockThreshold: event.target.value }))}
+        <div className="setup-panel glass">
+          {step === 0 && (
+            <CategoryEditor
+              title="Stock Categories"
+              items={draft.stockCategories}
+              placeholder="Add category"
+              onAdd={(value) => addListItem('stockCategories', value)}
+              onRemove={(value) => removeListItem('stockCategories', value)}
             />
-          </label>
-          <button className="primary-btn" onClick={() => onComplete(draft)}>Finish Setup</button>
+          )}
+          {step === 1 && (
+            <>
+              <CategoryEditor
+                title="Size Types"
+                items={draft.sizeTypes}
+                placeholder="Add size type"
+                onAdd={(value) => addListItem('sizeTypes', value)}
+                onRemove={(value) => removeListItem('sizeTypes', value)}
+              />
+              <CategoryEditor
+                title="Expense Categories"
+                items={draft.expenseCategories}
+                placeholder="Add expense category"
+                onAdd={(value) => addListItem('expenseCategories', value)}
+                onRemove={(value) => removeListItem('expenseCategories', value)}
+              />
+              <label className="sheet-field setup-threshold">
+                <span>Low Stock Alert Threshold</span>
+                <input
+                  type="number"
+                  value={draft.lowStockThreshold}
+                  onChange={(event) => setDraft((current) => ({ ...current, lowStockThreshold: event.target.value }))}
+                />
+              </label>
+            </>
+          )}
+          {step === 2 && (
+            <div className="pin-setup-card">
+              <label className="sheet-field">
+                <span>Create PIN</span>
+                <input inputMode="numeric" type="password" maxLength="6" value={pin} onChange={(event) => setPin(event.target.value)} />
+              </label>
+              <label className="sheet-field">
+                <span>Confirm PIN</span>
+                <input inputMode="numeric" type="password" maxLength="6" value={confirmPin} onChange={(event) => setConfirmPin(event.target.value)} />
+              </label>
+              <p>Use this PIN anytime the app is reopened after being idle.</p>
+            </div>
+          )}
+          {setupError && <p className="setup-error">{setupError}</p>}
+          <div className="wizard-actions">
+            {!pinOnly && step > 0 && <button className="secondary-btn" onClick={() => setStep((current) => current - 1)}>Back</button>}
+            <button className="primary-btn" onClick={nextStep}>{step === 2 ? 'Finish Setup' : 'Continue'}</button>
+          </div>
         </div>
       </div>
     </main>
