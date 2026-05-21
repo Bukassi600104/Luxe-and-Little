@@ -73,7 +73,53 @@ const defaultSettings = {
   lowStockThreshold: 10
 };
 
-const appVersion = '1.0.6';
+const appVersion = '1.0.7';
+
+function toMoneyNumber(value) {
+  return Number(value || 0);
+}
+
+function productValuation(product) {
+  const quantity = toMoneyNumber(product.qty);
+  const cost = toMoneyNumber(product.cost);
+  const price = toMoneyNumber(product.price);
+  const unitProfit = price - cost;
+  const totalCost = cost * quantity;
+  const totalSelling = price * quantity;
+  const expectedProfit = unitProfit * quantity;
+  const margin = totalSelling > 0 ? expectedProfit / totalSelling : 0;
+
+  return { quantity, cost, price, unitProfit, totalCost, totalSelling, expectedProfit, margin };
+}
+
+function buildProfitView(products, sales) {
+  const productRows = products.map((product) => ({ product, ...productValuation(product) }));
+  const current = productRows.reduce(
+    (acc, row) => ({
+      totalCost: acc.totalCost + row.totalCost,
+      totalSelling: acc.totalSelling + row.totalSelling,
+      expectedProfit: acc.expectedProfit + row.expectedProfit
+    }),
+    { totalCost: 0, totalSelling: 0, expectedProfit: 0 }
+  );
+  current.margin = current.totalSelling > 0 ? current.expectedProfit / current.totalSelling : 0;
+
+  const sold = sales.reduce(
+    (acc, sale) => {
+      const revenue = toMoneyNumber(sale.total);
+      const profit = toMoneyNumber(sale.profit);
+      return {
+        revenue: acc.revenue + revenue,
+        profit: acc.profit + profit,
+        cost: acc.cost + Math.max(0, revenue - profit)
+      };
+    },
+    { revenue: 0, cost: 0, profit: 0 }
+  );
+  sold.margin = sold.revenue > 0 ? sold.profit / sold.revenue : 0;
+
+  return { current, sold, productRows };
+}
 
 async function seedDatabase() {
   await db.open();
@@ -112,6 +158,7 @@ function App() {
     () => products.filter((item) => Number(item.qty || 0) <= lowStockThreshold),
     [products, lowStockThreshold]
   );
+  const profitView = useMemo(() => buildProfitView(products, sales), [products, sales]);
 
   useEffect(() => {
     if (!isStandalone || !showSplash) return;
@@ -452,6 +499,7 @@ function App() {
           {activeTab === 'more' && (
             <Reports
               totals={totals}
+              profitView={profitView}
               expenses={expenses}
               onAddExpense={() => setExpenseDraft(emptyExpense(settings))}
               onEditExpense={setExpenseDraft}
@@ -1018,6 +1066,7 @@ function Customers({ customers, sales, onAdd, onEdit, onDelete }) {
 
 function Reports({
   totals,
+  profitView,
   expenses,
   onAddExpense,
   onEditExpense,
@@ -1038,9 +1087,10 @@ function Reports({
 
   return (
     <div className="stack">
-      <div className="segmented glass">
+      <div className="segmented glass three-way">
         <button className={view === 'expenses' ? 'selected' : ''} onClick={() => setView('expenses')}>Expenses</button>
         <button className={view === 'reports' ? 'selected' : ''} onClick={() => setView('reports')}>Reports</button>
+        <button className={view === 'profit' ? 'selected' : ''} onClick={() => setView('profit')}>Profit View</button>
       </div>
       <button className="settings-card glass" onClick={onEditSettings}>
         <Settings size={20} />
@@ -1085,7 +1135,7 @@ function Reports({
             {expenses.length === 0 && <EmptyState title="No expenses yet" text="Add expenses to track business outflow." />}
           </div>
         </>
-      ) : (
+      ) : view === 'reports' ? (
         <>
           <div className="metric-grid">
             <Metric title="Revenue" value={money.format(totals.monthlyRevenue)} note="Saved sales" icon={<BarChart3 />} tone="pink" />
@@ -1105,7 +1155,73 @@ function Reports({
             ))}
           </div>
         </>
+      ) : (
+        <ProfitView profitView={profitView} sales={sales} />
       )}
+    </div>
+  );
+}
+
+function ProfitView({ profitView, sales }) {
+  const { current, sold, productRows } = profitView;
+
+  return (
+    <div className="profit-view">
+      <div className="section-title"><h2>Current Stock</h2></div>
+      <div className="metric-grid">
+        <Metric title="Cost Value" value={money.format(current.totalCost)} note="Remaining stock" icon={<Archive />} tone="lemon" />
+        <Metric title="Selling Value" value={money.format(current.totalSelling)} note="If all stock sells" icon={<ShoppingBag />} tone="pink" />
+        <Metric title="Expected Profit" value={money.format(current.expectedProfit)} note="Selling minus cost" icon={<Sparkles />} tone="purple" />
+        <Metric title="Margin" value={`${Math.round(current.margin * 100)}%`} note="On stock value" icon={<BarChart3 />} tone="lavender" />
+      </div>
+
+      <div className="section-title"><h2>Sold Items</h2></div>
+      <div className="metric-grid">
+        <Metric title="Sold Revenue" value={money.format(sold.revenue)} note="Completed sales" icon={<WalletCards />} tone="pink" />
+        <Metric title="Sold Cost" value={money.format(sold.cost)} note="Derived from sales" icon={<ClipboardList />} tone="lemon" />
+        <Metric title="Sold Profit" value={money.format(sold.profit)} note="Recorded profit" icon={<Sparkles />} tone="purple" />
+        <Metric title="Sold Margin" value={`${Math.round(sold.margin * 100)}%`} note="Profit over sales" icon={<BarChart3 />} tone="lavender" />
+      </div>
+
+      <div className="report-card glass">
+        <h2>Product Profit</h2>
+        {productRows.length === 0 && <EmptyState title="No products yet" text="Add products to see stock profit values." />}
+        {productRows.map((row) => (
+          <div className="profit-row" key={row.product.id}>
+            <div>
+              <strong>{row.product.name || 'Unnamed Product'}</strong>
+              <span>{row.quantity} left - {money.format(row.unitProfit)} profit each</span>
+            </div>
+            <div>
+              <strong className={row.expectedProfit < 0 ? 'warning' : 'good'}>{money.format(row.expectedProfit)}</strong>
+              <span>{money.format(row.totalCost)} cost / {money.format(row.totalSelling)} sell</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="report-card glass">
+        <h2>Recent Sold Profit</h2>
+        {sales.length === 0 && <EmptyState title="No sales yet" text="Sold profit appears after recording sales." />}
+        {sales.slice(0, 6).map((sale) => {
+          const saleTotalValue = toMoneyNumber(sale.total);
+          const saleProfitValue = toMoneyNumber(sale.profit);
+          const saleCostValue = Math.max(0, saleTotalValue - saleProfitValue);
+
+          return (
+            <div className="profit-row" key={sale.id}>
+              <div>
+                <strong>{sale.productName}</strong>
+                <span>{sale.quantity} sold to {sale.customerName}</span>
+              </div>
+              <div>
+                <strong className={saleProfitValue < 0 ? 'warning' : 'good'}>{money.format(saleProfitValue)}</strong>
+                <span>{money.format(saleCostValue)} cost / {money.format(saleTotalValue)} sold</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1162,6 +1278,7 @@ function Receipt({ sale }) {
 
 function ProductSheet({ product, onClose, onSave, settings }) {
   const [draft, setDraft] = useState(product);
+  const draftValuation = productValuation(draft);
 
   function update(field, value) {
     setDraft((current) => ({ ...current, [field]: value }));
@@ -1177,6 +1294,16 @@ function ProductSheet({ product, onClose, onSave, settings }) {
       <TextInput label="Cost Price" type="number" value={draft.cost} onChange={(value) => update('cost', value)} />
       <TextInput label="Selling Price" type="number" value={draft.price} onChange={(value) => update('price', value)} />
       <TextInput label="Supplier" value={draft.supplier || ''} onChange={(value) => update('supplier', value)} />
+      <div className="profit-preview glass">
+        <div>
+          <span>Profit per item</span>
+          <strong className={draftValuation.unitProfit < 0 ? 'warning' : ''}>{money.format(draftValuation.unitProfit)}</strong>
+        </div>
+        <div>
+          <span>Total expected profit</span>
+          <strong className={draftValuation.expectedProfit < 0 ? 'warning' : ''}>{money.format(draftValuation.expectedProfit)}</strong>
+        </div>
+      </div>
       <button className="primary-btn" onClick={() => onSave(draft)}>Save Product</button>
     </Sheet>
   );

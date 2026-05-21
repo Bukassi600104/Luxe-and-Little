@@ -565,6 +565,30 @@ em {
   font-size: 19px;
 }
 
+.profit-preview {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 18px;
+}
+
+.profit-preview div {
+  display: grid;
+  gap: 4px;
+}
+
+.profit-preview span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.profit-preview strong {
+  color: var(--pink);
+  font-size: 16px;
+}
+
 .customer-list {
   display: grid;
   gap: 10px;
@@ -633,6 +657,14 @@ em {
   font-size: 13px;
 }
 
+.segmented.three-way {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.segmented.three-way button {
+  font-size: 12px;
+}
+
 .segmented .selected {
   color: white;
   background: linear-gradient(135deg, var(--pink), #ff73bc);
@@ -642,6 +674,49 @@ em {
   padding: 15px;
   display: grid;
   gap: 9px;
+}
+
+.profit-view {
+  display: grid;
+  gap: 12px;
+}
+
+.profit-row {
+  min-height: 62px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(125, 93, 132, 0.1);
+}
+
+.profit-row:last-child {
+  border-bottom: 0;
+}
+
+.profit-row div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.profit-row div:last-child {
+  justify-items: end;
+  text-align: right;
+}
+
+.profit-row strong,
+.profit-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profit-row span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .settings-card {
